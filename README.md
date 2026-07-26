@@ -137,7 +137,8 @@ src/
   prompts/              versioned prompt registry (v1, + your v2)
   pipeline/             extract -> completeness -> triage -> summary
   eval/                 dataset loading, normalization, scoring, taxonomy, report
-  cli/                  extract.ts (one document), eval.ts (the whole set)
+  cli/                  extract.ts (one document), eval.ts (the whole set), report.ts
+app/                    one-page Next.js demo; a thin shell over the same pipeline
 data/docs/              25 synthetic documents
 data/labels/            25 ground-truth labels
 results/                run records, committed - they drive the comparison table
@@ -197,11 +198,43 @@ lists the rest.
 > detects the mangled form and says so rather than just rejecting the argument.
 
 ```bash
+npm run report
+```
+
+Regenerates `results.md` from the run records already in `results/`. No API calls, no
+spend — for when the report *renderer* changed and the report needs to catch up. Re-running
+a paid eval to pick up a formatting change would also silently replace the measurements
+this README analyses.
+
+```bash
 npm test
 ```
 
 Unit tests for the normalization and scoring logic, on Node's built-in test runner. The
 harness decides what counts as correct, so it gets tested.
+
+### Try it in a browser
+
+```bash
+npm run web
+```
+
+Then open <http://localhost:3000>. Paste a document — or press *load sample* — and the page
+shows the extracted JSON, the completeness flags, the triage, the one-line summary, and the
+tokens, cost and latency of each of the two model calls. It reads the same `.env`, so it
+runs whatever `OPENAI_MODEL` and `PROMPT_VERSION` are set to, and no separate configuration
+is involved.
+
+It is one route (`app/page.tsx`) and one API handler (`app/api/triage/route.ts`), and the
+handler is a thin adapter: it validates the request, calls `runPipeline` — the same function
+the CLI and the eval harness call — and returns the result. No auth, no database, no state,
+no styling framework. If the page contained any triage logic of its own, it would be
+demonstrating something the eval numbers do not cover.
+
+`npm run web:build` and `npm run web:start` produce and serve a production build.
+`npm run typecheck:web` typechecks the page against `tsconfig.web.json`, which is separate
+from the Node-side `tsconfig.json` for reasons documented in `next.config.mjs` — along with
+why the `web:*` scripts pass `--webpack`.
 
 ### Configuration
 
@@ -214,7 +247,8 @@ harness decides what counts as correct, so it gets tested.
 
 All four can be set in `.env`, which is the portable way to switch prompt versions on
 Windows — `PROMPT_VERSION=v2 npm run eval` is POSIX shell syntax and will not work in
-PowerShell.
+PowerShell. The CLIs, the eval harness and the browser page all read that one file; Next.js
+loads `.env` from the project root by itself, so there is nothing extra to configure.
 
 `src/openai/client.ts` branches on the model id: gpt-5 and o-series models get
 `reasoning.effort`, everything else gets `temperature: 0`. Switching `OPENAI_MODEL` to
@@ -367,6 +401,37 @@ mode the runs actually exposed — borderline abstention calls, and multi-party 
 where several names compete. A real deployment's first eval produces a better eval set
 before it produces a better prompt.
 
+### Cost and latency
+
+Every model call records its input and output tokens, its wall-clock latency and an
+indicative USD cost (`meta.calls` on every pipeline result). `results.md` turns that into a
+per-document table and an average; the numbers for the v2 run:
+
+| | Per document | Per 1,000 documents |
+| --- | --- | --- |
+| Tokens | 1,720 in / 775 out | 1.72M in / 0.78M out |
+| Cost | ~$0.0020 | ~$1.98 |
+| Latency | 10.5 s mean, 14.3 s slowest | — |
+
+Latency is the *document* wall clock — `extract` then `triage`, in sequence. Documents run
+concurrently during an eval, so 25 of them do not take 4 minutes.
+
+Two things are worth reading off that table. First, unit cost is not the constraint here: at
+roughly two-tenths of a cent per document, a handler spending sixty seconds on the same task
+is orders of magnitude more expensive, so the question a deployment has to answer is about
+accuracy and trust, not spend. Second, the split into two calls really does cost what the
+architecture note above says it costs — `triage` re-sends the document alongside the
+validated extraction, so the two calls price out at roughly the same amount rather than the
+second being a cheap tail. (The per-call breakdown is visible on the browser page; the
+committed run records predate per-call capture and hold per-document totals only.) Merging
+the two schemas would take most of that back, and would cost the eval its ability to tell an
+extraction error from a classification error. At these prices that is not a close call — but
+it is now *a* call rather than an assumption.
+
+Prices come from the hard-coded table in `src/config.ts` and are applied when the report is
+rendered, not when the run happens — so a stale price never gets baked into a committed run
+record. An unlisted model reports `n/a`, not `$0.00`.
+
 ### The prompt-version loop
 
 `v1` is the honest first attempt: written before a single eval had been run, and not
@@ -466,20 +531,54 @@ zero-retention API terms, a documented data-residency position, PII redaction be
 eval artefact is persisted, and a labelled set built inside the customer's environment by
 their own staff.
 
-**Human-in-the-loop**
+**Human-in-the-loop routing for low-confidence extractions**
 
-Nothing here should run unattended on day one. The design I would propose:
+Nothing here should run unattended on day one, and the thing that makes staged automation
+possible is that confidence is assessed **per field**, not per document. A claim can have a
+policy number worth trusting and a date of loss that is a coin flip; a single per-document
+score would either block the whole claim or wave the bad date through. So the gate I would
+propose sits between extraction and any downstream system, and it operates on fields.
 
-- Route on confidence, not on a single global accuracy number. Documents with an empty
-  `missingFields`, no `disagreements`, and `normal`/`low` urgency are the automation
-  candidates; everything else goes to a handler with the extraction pre-filled.
-- Never auto-action a `high` urgency claim in either direction — those are the expensive
-  ones in both the false-positive and false-negative directions.
-- Make the handler's correction the training signal. A review UI that captures the
-  corrected field is how the eval set grows past 25 documents into something
-  representative, and it is the only sustainable source of labels.
-- Start in shadow mode: run the pipeline alongside the human process for a few weeks and
-  compare, before any output reaches a customer.
+*What marks a field as low-confidence.* Four signals, all available today and none of them
+requiring a new model call:
+
+- The field appears in the model's self-reported `missingFields`, or came back `null`.
+- The field appears in `completeness.disagreements` — the model's self-report and the
+  deterministic check contradict each other. This one is the strongest signal in the system:
+  the model is wrong *about itself*, so nothing else it said about that field is load-bearing.
+- The field's `sourceQuote` is absent, or does not actually occur in the source document.
+  That is a cheap, deterministic hallucination check and it is the reason `sourceQuotes` is
+  in the schema at all.
+- The field belongs to a class the eval says is weak. Per-field accuracy in `results.md` is
+  exactly this: `claimantName` at 96% and `policyNumber` at 100% do not deserve the same
+  treatment, and on multi-party documents — a liability claim with a broker, a lawyer and an
+  injured third party — `claimantName` should be treated as low-confidence by default until
+  the modelling question behind it is settled.
+
+*What happens then.* Low-confidence fields are flagged and held: the claim is written to a
+review queue with the extraction pre-filled, the uncertain fields highlighted alongside their
+source quotes, and the document open beside them, so the handler confirms or corrects rather
+than re-keys. **No flagged field reaches a downstream system — policy administration, reserve
+setting, an auto-acknowledgement to the customer — until a human has cleared it.** Everything
+unflagged flows straight through. A document with no missing fields, no disagreements, quotes
+that check out, and `normal` or `low` urgency needs no human at all; a document with one bad
+date needs a human for one field, not for six.
+
+*Two rules on top of the routing.* Never auto-action a `high` urgency claim in either
+direction — those are expensive as false positives and as false negatives. And start in
+shadow mode: run the pipeline alongside the existing human process for a few weeks and
+compare, before any output reaches a customer.
+
+*The queue is also the label pipeline.* Every correction a handler makes is a labelled
+example, captured at the moment someone who knows the answer is already looking at the
+document. That is how the eval set grows past 25 documents into something representative, and
+it is the only sustainable source of labels — which makes the review UI a data-collection
+instrument, not just a safety net, and worth building properly.
+
+Described here, deliberately not built: the confidence rules are a customer-specific policy
+question (which fields may flow through unreviewed is a risk decision, not an engineering
+one), and building a review queue against invented thresholds would be guessing at the part
+that matters most.
 
 **Monitoring**
 
@@ -509,14 +608,23 @@ This is a weekend-sized portfolio piece. The omissions are deliberate:
   that fits in the prompt. Adding a vector store would have added infrastructure, latency
   and a new failure mode to solve a problem that does not exist here. Coverage checking
   against actual policy wordings would need retrieval — that is a different, later task.
-- **Local CLI only — no API, no database, no Docker.** The interesting content is the
-  schema design, the pipeline decomposition and the eval harness. A web service around
-  them would be more code and less signal.
+- **No text ingestion beyond paste and `.txt`.** Scanned PDFs and images are the obvious
+  next step — a document-AI or OCR pass in front of stage 1, which changes nothing
+  downstream but would move every number in `results.md`, because OCR noise is a different
+  failure distribution from clean text. Deliberately out of scope here: a pipeline that has
+  not been measured on clean text cannot be debugged on noisy text.
+- **One page, no service.** `npm run web` is a single Next.js route so a reviewer can try
+  the pipeline without cloning anything else; it has no auth, no database, no persistence
+  and no rate limiting, and it is a demo rather than a deployment. The interesting content
+  is still the schema design, the pipeline decomposition and the eval harness.
 - **Two model calls per document, no caching, no batching.** Correct for 25 documents and
   wrong for 25,000; the Batch API and prompt caching are the obvious first optimisations,
-  and neither would change the results.
-- **Prices in `src/config.ts` are hard-coded and will go stale.** They exist to print a
-  rough spend figure per eval run, not to be authoritative.
+  and neither would change the results. The cost table in `results.md` is what would tell
+  you when that stops being true.
+- **Prices in `src/config.ts` are hard-coded and will go stale.** They exist to put a rough
+  spend figure on a run, not to be authoritative. Cost is computed when the report is
+  rendered rather than stored in a run record, so a stale price is a wrong line in a
+  regenerable file, not a wrong number frozen in the history.
 
 The eval harness is the part that would survive contact with a real deployment. The rest
 is scaffolding around it.

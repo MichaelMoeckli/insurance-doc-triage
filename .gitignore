@@ -4,6 +4,11 @@ node_modules/
 dist/
 .DS_Store
 
+# Next.js build output for the demo page in app/.
+.next/
+next-env.d.ts
+tsconfig.web.tsbuildinfo
+
 # Per-document raw pipeline output from eval runs. The aggregated
 # results/run-<version>.json records ARE committed - they drive the
 # version-comparison table in results.md.

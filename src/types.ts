@@ -142,6 +142,26 @@ export interface TokenUsage {
   outputTokens: number;
 }
 
+/** The pipeline stages that issue a model call. Completeness and summary do not. */
+export const MODEL_CALL_STAGES = ['extract', 'triage'] as const;
+export type ModelCallStage = (typeof MODEL_CALL_STAGES)[number];
+
+/**
+ * Cost and timing for a single model call.
+ *
+ * Recorded per call rather than only per document, because the two calls have very
+ * different shapes - triage is conditioned on an already-extracted payload - and an
+ * average that merges them hides which one to optimise first.
+ */
+export interface ModelCallStats {
+  stage: ModelCallStage;
+  usage: TokenUsage;
+  /** Wall clock around the HTTP call, including SDK retries. */
+  latencyMs: number;
+  /** Indicative only; `null` when the model has no entry in the price table. */
+  costUsd: number | null;
+}
+
 export interface TriageResult {
   documentId: string;
   extraction: Extraction;
@@ -152,8 +172,13 @@ export interface TriageResult {
   meta: {
     model: string;
     promptVersion: string;
+    /** Summed over `calls`. */
     usage: TokenUsage;
+    /** Summed over `calls`: per-document wall clock, since the stages are sequential. */
     latencyMs: number;
+    /** Summed over `calls`; `null` if any call could not be priced. */
+    costUsd: number | null;
+    calls: ModelCallStats[];
   };
 }
 

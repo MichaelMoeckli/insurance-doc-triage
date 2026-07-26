@@ -18,6 +18,7 @@ import {
   type Category,
   type ExtractedField,
   type GroundTruth,
+  type ModelCallStats,
   type TokenUsage,
   type TriageResult,
   type Urgency,
@@ -63,6 +64,8 @@ export interface DocumentComparison {
   failures: Failure[];
   usage: TokenUsage;
   latencyMs: number;
+  /** Per model call. Empty for a document whose pipeline threw before any call landed. */
+  calls: ModelCallStats[];
   summary: string | null;
 }
 
@@ -286,6 +289,7 @@ export function compareDocument(truth: GroundTruth, result: TriageResult): Docum
     failures,
     usage: result.meta.usage,
     latencyMs: result.meta.latencyMs,
+    calls: result.meta.calls,
     summary: result.summary,
   };
 }
@@ -326,6 +330,7 @@ export function failedDocument(
     ],
     usage: { inputTokens: 0, outputTokens: 0 },
     latencyMs: 0,
+    calls: [],
     summary: null,
   };
 }

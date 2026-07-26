@@ -14,7 +14,7 @@
  * Writes `results/run-<version>.json` and regenerates `results.md`.
  */
 
-import { MODEL, PROMPT_VERSION } from '../config.js';
+import { MODEL, PROMPT_VERSION, estimateCostUsd } from '../config.js';
 import { SchemaValidationError } from '../schema.js';
 import { ModelResponseError } from '../openai/client.js';
 import { getPromptSet } from '../prompts/index.js';
@@ -182,7 +182,13 @@ async function main(): Promise<void> {
     timestamp: new Date().toISOString(),
     metrics,
     failures: comparisons.flatMap((c) => c.failures),
-    documents: comparisons.map((c) => ({ id: c.documentId, summary: c.summary, completed: c.completed })),
+    documents: comparisons.map((c) => ({
+      id: c.documentId,
+      summary: c.summary,
+      completed: c.completed,
+      usage: c.usage,
+      latencyMs: c.latencyMs,
+    })),
   };
 
   await saveRun(record, comparisons);
@@ -197,6 +203,12 @@ async function main(): Promise<void> {
   console.error(`Urgency accuracy:            ${percent(metrics.urgency.correct, metrics.urgency.total)} (${metrics.urgency.underTriaged} under-triaged)`);
   console.error(`Category accuracy:           ${percent(metrics.category.correct, metrics.category.total)}`);
   console.error(`Hard failures:               ${record.failures.filter((f) => f.severity === 'hard').length}`);
+  const cost = estimateCostUsd(MODEL, metrics.usage);
+  const completedDocs = Math.max(metrics.completed, 1);
+  console.error(
+    `Cost / latency:              ${cost === null ? 'unpriced model' : `~$${cost.toFixed(4)}`}` +
+      `, ${Math.round(metrics.totalLatencyMs / completedDocs).toLocaleString('en')} ms mean per document`,
+  );
   console.error('');
   console.error('Wrote results.md and results/run-' + record.promptVersion + '.json');
 }

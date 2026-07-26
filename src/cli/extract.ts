@@ -54,6 +54,13 @@ async function main(): Promise<void> {
 
   console.log(`\n${result.summary}\n`);
   console.log(JSON.stringify(result, null, 2));
+
+  const { usage, latencyMs, costUsd, calls } = result.meta;
+  console.error(
+    `\n${calls.map((c) => `${c.stage} ${c.latencyMs} ms`).join(' + ')} = ${latencyMs} ms, ` +
+      `${usage.inputTokens} in / ${usage.outputTokens} out tokens, ` +
+      `${costUsd === null ? 'unpriced model' : `~$${costUsd.toFixed(5)}`}`,
+  );
 }
 
 main().catch((error: unknown) => {

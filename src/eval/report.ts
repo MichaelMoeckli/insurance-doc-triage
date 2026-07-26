@@ -9,10 +9,29 @@
 
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { MODEL_PRICING_USD_PER_MTOK, PATHS } from '../config.js';
-import { EXTRACTED_FIELDS, type ExtractedField } from '../types.js';
+import { PATHS, estimateCostUsd } from '../config.js';
+import { EXTRACTED_FIELDS, type ExtractedField, type TokenUsage } from '../types.js';
 import type { DocumentComparison, Ratio, RunMetrics } from './compare.js';
 import { FAILURE_DESCRIPTIONS, tallyByCategory, type Failure, type FailureCategory } from './taxonomy.js';
+
+/**
+ * One line per document, so a run record alone is enough to re-read the outputs and to
+ * rebuild the cost table.
+ *
+ * Tokens and latency are recorded; cost is not. Cost is derived at render time from the
+ * price table in `src/config.ts`, which is explicitly expected to go stale - baking a
+ * number computed against last quarter's prices into a committed record would make the
+ * history quietly inconsistent.
+ */
+export interface RunDocumentRecord {
+  id: string;
+  summary: string | null;
+  completed: boolean;
+  /** Absent in run records written before cost tracking existed. */
+  usage?: TokenUsage;
+  /** Per-document wall clock, `extract` + `triage`. Absent in older records. */
+  latencyMs?: number;
+}
 
 export interface RunRecord {
   promptVersion: string;
@@ -21,8 +40,7 @@ export interface RunRecord {
   timestamp: string;
   metrics: RunMetrics;
   failures: Failure[];
-  /** One line per document, so a run record alone is enough to re-read the outputs. */
-  documents: { id: string; summary: string | null; completed: boolean }[];
+  documents: RunDocumentRecord[];
 }
 
 // ---------------------------------------------------------------------------
@@ -49,13 +67,28 @@ function delta(current: Ratio, previous: Ratio | undefined): string {
   return `${diff > 0 ? '+' : ''}${diff.toFixed(1)}pp`;
 }
 
-function estimateCostUsd(model: string, metrics: RunMetrics): string {
-  const price = MODEL_PRICING_USD_PER_MTOK[model];
-  if (!price) return 'n/a (unknown model price)';
-  const usd =
-    (metrics.usage.inputTokens / 1_000_000) * price.input +
-    (metrics.usage.outputTokens / 1_000_000) * price.output;
-  return `~$${usd.toFixed(4)}`;
+/** Renders a cost, keeping "we cannot price this model" distinct from "it was free". */
+function usd(value: number | null, digits = 4): string {
+  return value === null ? 'n/a (unpriced model)' : `~$${value.toFixed(digits)}`;
+}
+
+function ms(value: number): string {
+  return `${Math.round(value).toLocaleString('en')} ms`;
+}
+
+function tokens(value: number): string {
+  return value.toLocaleString('en');
+}
+
+function mean(values: readonly number[]): number {
+  return values.length === 0 ? 0 : values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 0 ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2 : (sorted[mid] ?? 0);
 }
 
 /** Escapes the pipe characters that would otherwise break a markdown table row. */
@@ -107,6 +140,110 @@ export async function loadRuns(): Promise<RunRecord[]> {
 // Report
 // ---------------------------------------------------------------------------
 
+/** A document's spend, with the price applied at render time rather than at run time. */
+interface DocumentCost {
+  id: string;
+  usage: TokenUsage;
+  latencyMs: number;
+  costUsd: number | null;
+}
+
+function documentCosts(record: RunRecord): DocumentCost[] {
+  const rows: DocumentCost[] = [];
+  for (const doc of record.documents) {
+    // Documents whose pipeline threw carry no usage: whatever they spent before the
+    // failure is not attributed, so averaging them in would understate cost per document.
+    if (!doc.completed || !doc.usage || doc.latencyMs === undefined) continue;
+    rows.push({
+      id: doc.id,
+      usage: doc.usage,
+      latencyMs: doc.latencyMs,
+      costUsd: estimateCostUsd(record.model, doc.usage),
+    });
+  }
+  return rows;
+}
+
+/**
+ * Cost and latency, per document and on average.
+ *
+ * The number a reader actually wants is not this run's spend - it is what the thing
+ * costs at volume - so the projection to 1,000 documents is stated explicitly rather
+ * than left as an exercise.
+ */
+function renderCostSection(record: RunRecord): string[] {
+  const lines: string[] = ['## Cost and latency', ''];
+  const rows = documentCosts(record);
+
+  if (rows.length === 0) {
+    lines.push(
+      'This run record predates per-document cost tracking, or no document completed. ' +
+        'Re-run `npm run eval` to populate this section.',
+      '',
+    );
+    return lines;
+  }
+
+  lines.push(
+    'Input and output tokens and wall-clock latency are captured per model call ' +
+      '(`meta.calls` on every pipeline result) and summed per document. Costs are ' +
+      'computed at render time from the indicative per-million-token prices in ' +
+      '`src/config.ts` - a sanity check on spend, not a bill.',
+    '',
+    'Latency is the *document* wall clock: `extract` then `triage`, which run in ' +
+      'sequence. Documents run concurrently during an eval, so the column below sums to ' +
+      'considerably more than the elapsed time of the run.',
+    '',
+  );
+
+  const costs = rows.map((r) => r.costUsd);
+  const totalCost = costs.some((c) => c === null)
+    ? null
+    : costs.reduce((sum: number, c) => sum + (c ?? 0), 0);
+  const latencies = rows.map((r) => r.latencyMs);
+  const inputTotal = rows.reduce((sum, r) => sum + r.usage.inputTokens, 0);
+  const outputTotal = rows.reduce((sum, r) => sum + r.usage.outputTokens, 0);
+
+  lines.push('| Metric | Value |');
+  lines.push('| --- | --- |');
+  lines.push(`| Documents priced | ${rows.length} of ${record.documents.length} |`);
+  lines.push(`| Model calls | ${rows.length * 2} (2 per document) |`);
+  lines.push(`| Tokens | ${tokens(inputTotal)} in / ${tokens(outputTotal)} out |`);
+  lines.push(`| Total cost | ${usd(totalCost)} |`);
+  lines.push(`| Cost per document (mean) | ${usd(totalCost === null ? null : totalCost / rows.length, 5)} |`);
+  lines.push(
+    `| Projected cost per 1,000 documents | ${usd(totalCost === null ? null : (totalCost / rows.length) * 1000, 2)} |`,
+  );
+  lines.push(`| Latency per document (mean) | ${ms(mean(latencies))} |`);
+  lines.push(`| Latency per document (median) | ${ms(median(latencies))} |`);
+  lines.push(`| Latency per document (slowest) | ${ms(Math.max(...latencies))} |`);
+  lines.push('');
+
+  lines.push('| Document | Input tok | Output tok | Cost (USD) | Latency (ms) |');
+  lines.push('| --- | ---: | ---: | ---: | ---: |');
+  for (const row of rows) {
+    lines.push(
+      `| \`${td(row.id)}\` | ${tokens(row.usage.inputTokens)} | ${tokens(row.usage.outputTokens)} | ` +
+        `${usd(row.costUsd, 5)} | ${tokens(row.latencyMs)} |`,
+    );
+  }
+  lines.push(
+    `| **average** | **${tokens(Math.round(inputTotal / rows.length))}** | ` +
+      `**${tokens(Math.round(outputTotal / rows.length))}** | ` +
+      `**${usd(totalCost === null ? null : totalCost / rows.length, 5)}** | ` +
+      `**${tokens(Math.round(mean(latencies)))}** |`,
+  );
+  lines.push('');
+  lines.push(
+    'Two calls per document is the deliberate cost of splitting extraction from triage ' +
+      '(see the architecture note in the README). This table is what that decision costs: ' +
+      'halving it is one merged schema away, and the price is that the eval can no longer ' +
+      'tell an extraction error from a classification error.',
+  );
+  lines.push('');
+  return lines;
+}
+
 const FIELD_LABELS: Record<ExtractedField, string> = {
   policyNumber: 'policyNumber',
   claimantName: 'claimantName',
@@ -129,7 +266,7 @@ export function renderReport(current: RunRecord, allRuns: readonly RunRecord[]):
   lines.push(`- **Documents:** ${m.documents} (${m.completed} completed the pipeline)`);
   lines.push(`- **Run at:** ${current.timestamp}`);
   lines.push(
-    `- **Tokens:** ${m.usage.inputTokens.toLocaleString('en')} in / ${m.usage.outputTokens.toLocaleString('en')} out - ${estimateCostUsd(current.model, m)}`,
+    `- **Tokens:** ${tokens(m.usage.inputTokens)} in / ${tokens(m.usage.outputTokens)} out - ${usd(estimateCostUsd(current.model, m.usage))}`,
   );
   lines.push('');
 
@@ -222,6 +359,9 @@ export function renderReport(current: RunRecord, allRuns: readonly RunRecord[]):
     }
     lines.push('');
   }
+
+  // --- Cost and latency ---------------------------------------------------
+  lines.push(...renderCostSection(current));
 
   // --- Taxonomy -----------------------------------------------------------
   lines.push('## Failure taxonomy');

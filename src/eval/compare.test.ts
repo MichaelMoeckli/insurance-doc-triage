@@ -49,7 +49,14 @@ function result(overrides: Partial<TriageResult['extraction']> = {}, triage: Par
       ...triage,
     },
     summary: 'summary',
-    meta: { model: 'test', promptVersion: 'test', usage: { inputTokens: 0, outputTokens: 0 }, latencyMs: 0 },
+    meta: {
+      model: 'test',
+      promptVersion: 'test',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      latencyMs: 0,
+      costUsd: 0,
+      calls: [],
+    },
   };
 }
 

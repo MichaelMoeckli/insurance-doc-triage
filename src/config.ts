@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import type { TokenUsage } from './types.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /** Repository root, resolved from this file so the CLIs work from any cwd. */
@@ -53,3 +54,20 @@ export const MODEL_PRICING_USD_PER_MTOK: Record<string, { input: number; output:
   'gpt-4.1-mini': { input: 0.4, output: 1.6 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
 };
+
+/**
+ * Estimated USD cost of one call's token usage.
+ *
+ * Returns `null` rather than 0 for an unpriced model: a missing price and a free call
+ * are different facts, and reporting the first as the second would quietly understate
+ * spend the moment someone sets `OPENAI_MODEL` to something not listed above.
+ *
+ * Reasoning tokens are billed as output tokens and are already included in the API's
+ * `output_tokens`, so no separate term is needed here. Cached input tokens are *not*
+ * discounted by this estimate, which makes it an upper bound once caching is in play.
+ */
+export function estimateCostUsd(model: string, usage: TokenUsage): number | null {
+  const price = MODEL_PRICING_USD_PER_MTOK[model];
+  if (!price) return null;
+  return (usage.inputTokens / 1_000_000) * price.input + (usage.outputTokens / 1_000_000) * price.output;
+}

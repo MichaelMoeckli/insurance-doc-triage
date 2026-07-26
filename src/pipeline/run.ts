@@ -9,14 +9,24 @@
  * `src/cli/eval.ts`).
  */
 
-import { MODEL } from '../config.js';
-import { addUsage } from '../openai/client.js';
+import { MODEL, estimateCostUsd } from '../config.js';
+import { addUsage, type StructuredCallResult } from '../openai/client.js';
 import { getPromptSet, type PromptSet } from '../prompts/index.js';
-import type { TriageResult } from '../types.js';
+import type { ModelCallStage, ModelCallStats, TriageResult } from '../types.js';
 import { checkCompleteness } from './completeness.js';
 import { extractFields } from './extract.js';
 import { buildSummary } from './summary.js';
 import { triageClaim } from './triage.js';
+
+/** Attaches the stage name and an indicative price to one call's usage and timing. */
+function statsFor(stage: ModelCallStage, call: StructuredCallResult<unknown>): ModelCallStats {
+  return {
+    stage,
+    usage: call.usage,
+    latencyMs: call.latencyMs,
+    costUsd: estimateCostUsd(MODEL, call.usage),
+  };
+}
 
 export async function runPipeline(
   documentId: string,
@@ -27,6 +37,9 @@ export async function runPipeline(
   const completeness = checkCompleteness(extracted.data);
   const triaged = await triageClaim(documentText, extracted.data, completeness, prompts);
 
+  const calls = [statsFor('extract', extracted), statsFor('triage', triaged)];
+  const usage = addUsage(extracted.usage, triaged.usage);
+
   return {
     documentId,
     extraction: extracted.data,
@@ -36,8 +49,11 @@ export async function runPipeline(
     meta: {
       model: MODEL,
       promptVersion: prompts.version,
-      usage: addUsage(extracted.usage, triaged.usage),
-      latencyMs: extracted.latencyMs + triaged.latencyMs,
+      usage,
+      // The two stages are sequential, so summing them is the document's wall clock.
+      latencyMs: calls.reduce((sum, call) => sum + call.latencyMs, 0),
+      costUsd: estimateCostUsd(MODEL, usage),
+      calls,
     },
   };
 }
