@@ -1,10 +1,30 @@
 # claim-triage
 
+[![CI](https://github.com/MichaelMoeckli/insurance-doc-triage/actions/workflows/ci.yml/badge.svg)](https://github.com/MichaelMoeckli/insurance-doc-triage/actions/workflows/ci.yml)
+
 Structured extraction and triage of unstructured Swiss insurance and finance documents,
 using OpenAI Structured Outputs — with an eval harness that makes prompt changes
 measurable instead of anecdotal.
 
 25 synthetic documents. Two model calls per document. One report.
+
+## At a glance
+
+|  |  |
+| --- | --- |
+| **The task** | A claim notification arrives as free text in German or English. Pull out the policy number, claimant, date of loss and amount; flag what the document *fails* to say; decide how fast a human must pick it up. |
+| **Headline** | **99.3%** field accuracy (149/150) and **100%** urgency accuracy with zero under-triage, on `gpt-5-mini`, at ~$0.002 and ~10s per document. |
+| **The caveat, up front** | Most of the v1 → v2 delta is **noise**, and the run proves it — four metrics moved that a one-string prompt change cannot touch. At 25 documents one flipped answer is 0.67pp. [The analysis is the deliverable, not the number.](#an-honest-caveat-on-these-numbers) |
+| **What's interesting** | The eval harness was built *before* the prompt was tuned, so v2 could be shown to have fixed its target, introduced an equal regression, and left the rest to chance — which turned a prompt question into a [data-modelling one](#what-v2-actually-did). |
+| **Stack** | TypeScript, OpenAI Responses API with strict Structured Outputs, hand-written JSON Schemas, a versioned prompt registry, and a one-page Next.js demo over the same pipeline. |
+| **Check it in 30 seconds** | `npm install && npm run eval:validate` — validates all 25 document/label pairs. No API key, no model calls, no spend. |
+
+**Start here if you're skimming:** [Results](#results) · [What v2 actually did](#what-v2-actually-did) · [The honest caveat on these numbers](#an-honest-caveat-on-these-numbers) · [What I'd send back to product and research](#what-id-send-back-to-product-and-research)
+
+![The demo page: a German claim email in, extraction with source quotes, completeness flags, triage and per-call cost out.](docs/screenshot.png)
+
+<sub>`npm run web` — the same `runPipeline` the CLI and the eval harness call, with per-call
+tokens, cost and latency. Setup in [Try it in a browser](#try-it-in-a-browser).</sub>
 
 ---
 

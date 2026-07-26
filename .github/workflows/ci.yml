@@ -1,0 +1,48 @@
+# Every check here is offline: no OPENAI_API_KEY, no model calls, no spend.
+#
+# That is the whole design constraint. A CI job that ran `npm run eval` would need a
+# funded key in repository secrets and would cost money on every push, so the paid eval
+# stays a local, deliberate act - and CI guards the parts that decide whether its numbers
+# mean anything: the scoring logic, the two typecheck boundaries, and the dataset itself.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the `engines.node` floor in package.json.
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # The Node-side pipeline, CLIs and eval harness.
+      - name: Typecheck (node)
+        run: npm run typecheck
+
+      # The browser demo, against tsconfig.web.json. Separate from the above on purpose -
+      # see next.config.mjs - so a break in one is not hidden by the other passing.
+      - name: Typecheck (web)
+        run: npm run typecheck:web
+
+      # Unit tests for normalization and scoring. The harness decides what counts as
+      # correct, so a regression here silently rewrites every accuracy figure in
+      # results.md - which is why these run before anything else is trusted.
+      - name: Test
+        run: npm test
+
+      # Validates all 25 document/label pairs: pairing, closed enums, and the
+      # ambiguity rule. Catches a hand-authored label that contradicts the rule the
+      # prompt is measured against.
+      - name: Validate dataset
+        run: npm run eval:validate
