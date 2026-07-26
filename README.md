@@ -164,23 +164,37 @@ npm run eval
 Other entry points:
 
 ```bash
-npm run eval -- --validate-only
+npm run eval:validate
 ```
 
 Checks all 25 document/label pairs offline — pairing, enums, and the ambiguity rule — with
 no API calls and no spend. Worth running first.
 
 ```bash
+npm run eval:smoke
+```
+
+The first 5 documents only, as a cheap check that the key and model work.
+
+```bash
 npm run extract -- data/docs/motor-04-highway-injury.txt
 ```
 
-One document, printing the summary line and the full JSON. Add `--json` for JSON only.
+One document, printing the summary line and the full JSON.
 
 ```bash
-npm run eval -- --limit 5 --concurrency 8
+npx tsx src/cli/eval.ts --doc motor-04 --concurrency 8
 ```
 
-A cheap smoke run. `--doc motor-04` runs a single document by id substring.
+Any other flag combination. `--doc` matches on an id substring; `npx tsx src/cli/eval.ts --help`
+lists the rest.
+
+> **On flags and `npm run`.** `npm run eval -- --limit 5` does not work: npm treats a
+> `--flag` after the `--` separator as one of its own config keys and forwards only the
+> value, so the script receives a bare `5`. It bites on Windows and PowerShell in
+> particular. Positional arguments survive — which is why `npm run extract -- <path>` is
+> fine — but flags need `npx tsx`, or one of the `eval:*` scripts above. The eval CLI
+> detects the mangled form and says so rather than just rejecting the argument.
 
 ```bash
 npm test
@@ -226,50 +240,170 @@ a statement about something.
 
 ## Results
 
-*Placeholder — fill in after running `npm run eval`. `results.md` contains the full
-tables, the failure log and the version comparison; this is the summary to paste back.*
+`gpt-5-mini`, 25 documents, 50 calls, ~42k in / ~19k out tokens, ~$0.05 per run.
+Full tables, the failure log and the version comparison are in
+[`results.md`](results.md); this is the summary.
 
 | Metric | v1 | v2 |
 | --- | --- | --- |
-| Field accuracy (normalised) | | |
-| Field accuracy (strict) | | |
-| `policyNumber` | | |
-| `claimantName` | | |
-| `dateOfLoss` | | |
-| `claimType` | | |
-| `amount` | | |
-| `currency` | | |
-| `missingFields` exact set match | | |
-| Urgency accuracy | | |
-| — of which under-triaged | | |
-| Category accuracy | | |
-| Hard failures | | |
+| Field accuracy (normalised) | 98.0% (147/150) | **99.3%** (149/150) |
+| Field accuracy (strict) | 98.0% (147/150) | **98.7%** (148/150) |
+| `policyNumber` | 100.0% (25/25) | 100.0% (25/25) |
+| `claimantName` | 96.0% (24/25) | 96.0% (24/25) |
+| `dateOfLoss` | 96.0% (24/25) | 100.0% (25/25) |
+| `claimType` | 100.0% (25/25) | 100.0% (25/25) |
+| `amount` | 96.0% (24/25) | 100.0% (25/25) |
+| `currency` | 100.0% (25/25) | 100.0% (25/25) |
+| `missingFields` exact set match | 92.0% (23/25) | 100.0% (25/25) |
+| — precision / recall | 90.0% / 100.0% | 100.0% / 100.0% |
+| Urgency accuracy | 100.0% (25/25) | 100.0% (25/25) |
+| — of which under-triaged | 0 | 0 |
+| Category accuracy | 100.0% (25/25) | 96.0% (24/25) |
+| Hard failures | 5 | 2 |
 
-**v2 change:**
+**v2 change:** one string — the `claimantName` schema description. v1 called the field
+*"the policyholder or claimant"*; v2 defines it as the policyholder explicitly. Both
+instruction blocks, both input builders and every other field description are v1 verbatim
+(`src/prompts/v2.ts` spreads `v1` rather than copying it, so the diff cannot drift).
 
-**What it fixed / what it cost:**
+**What it fixed / what it cost: net zero, and that is the finding.** Headline field
+accuracy rose 1.3pp — and essentially none of that is attributable to the change. See
+below.
 
-### The v1 → v2 loop
+### What v1 got wrong
 
-`v1` is the honest first attempt: it was written before a single eval had been run and
-was not pre-tuned against the dataset. Adding `v2`:
+Five hard failure records across three documents, two root causes — and the interesting
+part is that strict and normalised accuracy are identical: **zero format failures**. No
+misparsed Swiss apostrophes, no German decimal commas read as decimal points, no `EUR`
+silently defaulted to `CHF`, no non-ISO dates. The traps the dataset was built around
+were not the ones that fired.
+
+What fired instead:
+
+1. **Over-abstention (4 of the 5 records, on 2 documents).** The null-on-ambiguity rule
+   over-triggers, and each over-abstention costs twice — once as `missed-field`, once as
+   `spurious-missing-field`.
+   - `motor-06`: "rund CHF 2'800.00" → `amount: null`. An approximate figure is still a
+     figure; "rund" made the model discard it.
+   - `property-08`: an email dated `3. Juli 2025` describing water escaping "seit heute
+     Abend" → `dateOfLoss: null`. The letterhead date resolves it.
+
+   The completeness numbers say the same thing precisely: **recall 100%, precision 90%**.
+   The model never missed a field that was genuinely absent — it declared extra ones.
+   Over-abstention is the safe direction to be wrong in. Both cases came back clean on
+   the v2 run without anything being changed to address them, which is the first clue
+   that this set is at the edge of what 25 documents can resolve.
+
+2. **An ambiguous field definition — my bug, not the model's.** `liability-22` returned
+   `Bertschi Logistik AG` where the label says `Stefan Hauser`. The v1 schema description
+   reads *"policyholder or claimant"* — on a liability claim those are two different
+   parties, and the model picked the other one. The instruction is self-contradictory and
+   the model resolved it as reasonably as the wording allowed. This is what v2 targets.
+
+3. **Classification is saturated.** Urgency and category are both 25/25, with zero
+   under-triage. The explicit rubric appears to be doing its job — including the two
+   cases designed to be hard for the wrong reasons: `property-09` (routine-sounding
+   kitchen fire, `high` only because CHF 62,000 clears the threshold) and `property-12`
+   (hail, correctly `other` rather than the tempting `property-water`). `property-12`
+   flipped to `property-water` on the v2 run, which received a byte-identical triage
+   prompt — so "saturated" here means "at the resolution this dataset can measure", not
+   "solved".
+
+### What v2 actually did
+
+The one-string change had exactly the effect it was aimed at, and an equal and opposite
+one nobody asked for:
+
+- **Fixed** `liability-22`: `Bertschi Logistik AG` → `Mr Stefan Hauser`. Target hit.
+  (Strict scoring still counts it as a miss because of the `Mr`; normalisation strips the
+  title. That single cell is the whole 99.3% vs 98.7% gap.)
+- **Broke** `health-20`: `Goran Petrović` → `Petrović Bau AG`. A UVG workplace-accident
+  policy is held by the *employer*, so "the policyholder" is now correctly read as the
+  company — and the injured employee, who is the name a handler actually needs, is gone.
+
+`claimantName` therefore scored **96% before and 96% after**. One document traded for
+another.
+
+That is not a prompt problem. It is a **modelling** problem, and the eval surfaced it in
+one run: on a liability claim the useful name is the insured, and on an accident claim it
+is the injured party. One field cannot be both, and every wording that disambiguates it
+for one line of business breaks the other. v1's vague *"policyholder or claimant"* got
+`health-20` right and `liability-22` wrong; v2's precise wording does the reverse.
+
+The real fix is two fields — `policyholderName` and `claimantName` — or a per-`claimType`
+rule. In a customer engagement that is a discovery question ("when your handlers say
+*claimant*, which party do they mean, and does the answer change by product?"), not
+something to guess at in a prompt. It is deliberately **not** patched here: it would mean
+changing the schema, the types, all 25 labels and the scoring code at once, and a version
+that changes five things measures nothing.
+
+### An honest caveat on these numbers
+
+**Most of the v1 → v2 delta is noise, and the run proves it.** Same prompt text, same
+inputs, one changed string in one field description — yet four metrics moved that the
+change cannot touch:
+
+| Moved | Attributable to the change? |
+| --- | --- |
+| `claimantName` 96% → 96% | **Yes.** One fix, one regression. |
+| `dateOfLoss` 96% → 100% (`property-08`) | No. Over-abstention resolved itself between runs. |
+| `amount` 96% → 100% (`motor-06`) | No. Same. |
+| `missingFields` 92% → 100% | No. Follows the two above. |
+| `category` 100% → 96% (`property-12`) | No. Triage received a byte-identical schema and prompt. |
+
+So the headline "+1.3pp field accuracy" is real in the sense that it happened, and
+worthless in the sense that it says nothing about the change. On 25 documents a single
+flipped answer moves field accuracy by 0.67pp; sampling variance at this size swamps a
+one-string edit. **The correct reading of this comparison is that v2 fixed its target,
+introduced a regression, and left everything else to chance.**
+
+This is why the report separates per-field accuracy and a per-document failure log from
+the headline number. If `results.md` showed only the top-line figure, this would have
+looked like a clean win and shipped as one.
+
+The useful next move is therefore *not* more prompt tuning against this set. It is to
+resolve the `claimantName` modelling question, and to grow the dataset around the failure
+mode the runs actually exposed — borderline abstention calls, and multi-party documents
+where several names compete. A real deployment's first eval produces a better eval set
+before it produces a better prompt.
+
+### The prompt-version loop
+
+`v1` is the honest first attempt: written before a single eval had been run, and not
+pre-tuned against the dataset. `v2` is what came out of reading v1's failure log. Adding
+a `v3`:
 
 1. Run `npm run eval`, then read the **failure taxonomy** in `results.md`. Pick the
    category with the most hard failures.
-2. `cp src/prompts/v1.ts src/prompts/v2.ts`, rename the export, set `version: 'v2'`, and
+2. `cp src/prompts/v2.ts src/prompts/v3.ts`, rename the export, set `version: 'v3'`, and
    write a `changelog` line naming the failure category you are targeting.
-3. Make **one** change. Register it in `src/prompts/index.ts`, set `PROMPT_VERSION=v2` in
-   `.env` (or export it in the shell), and run `npm run eval` again.
+3. Make **one** change. Register it in `src/prompts/index.ts`, set `PROMPT_VERSION=v3` in
+   `.env`, and run `npm run eval` again.
+
+A version owns both its instruction text **and** its schemas, because the JSON Schema
+field `description`s are prompt text — they are sent on every request and the model
+follows them. `v2` differs from `v1` by exactly one description string, and it inherits
+the rest by spreading `v1` rather than copying it, so the two cannot drift apart. Editing
+a shared schema in place would silently change what every earlier version had been
+measured on, which would make the comparison table a lie rather than a record.
 
 Each run writes `results/run-<version>.json`, and the report renders every run record it
-finds side by side with per-metric deltas — so the comparison table fills itself in. Two
-changes in one version means the delta cannot be attributed to either, which is why the
-recipe insists on one.
+finds side by side with per-metric deltas — so the comparison table fills itself in.
+
+Two cautions the v1 → v2 run earned the hard way. Changing more than one thing per
+version makes the delta unattributable, which is why the recipe insists on one. And a
+delta smaller than a couple of documents is not evidence of anything at this dataset
+size — check the per-field rows and the failure log before believing a headline
+improvement.
 
 ## Failure analysis
 
-The taxonomy in `src/eval/taxonomy.ts` is built so that each category maps to a different
-*action*, not just a different symptom:
+Across both runs only four of these categories ever fired — `missed-field` (2),
+`spurious-missing-field` (2) and `name-mismatch` (1) on v1; `name-mismatch` (1) and
+`category-mismatch` (1) on v2. The taxonomy in `src/eval/taxonomy.ts` is built so that
+each category maps to a different *action*, not just a different symptom, which is what
+let five v1 records resolve to two causes — and what made the v2 regression legible as a
+regression rather than as a slightly different number:
 
 | Category | What it implies |
 | --- | --- |

@@ -2,10 +2,14 @@
  * Single-document CLI.
  *
  *   npm run extract -- data/docs/motor-01-collision-zurich.txt
- *   npm run extract -- data/docs/motor-01-collision-zurich.txt --json
+ *   npx tsx src/cli/extract.ts data/docs/motor-01-collision-zurich.txt --json
  *
- * Prints the human-readable summary plus the full JSON payload. `--json` prints only
- * the JSON, so the command composes with jq and friends.
+ * Prints the human-readable summary plus the full JSON payload. `--json` prints only the
+ * JSON, so the command composes with jq and friends.
+ *
+ * The file path survives `npm run extract -- <path>`, but `--json` does not: npm treats
+ * a `--flag` after the `--` separator as one of its own config keys and drops it. Use
+ * `npx tsx` when passing flags.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -17,11 +21,18 @@ import { runPipeline } from '../pipeline/run.js';
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const jsonOnly = args.includes('--json');
-  const target = args.find((arg) => !arg.startsWith('--'));
+  const target = args.find((arg) => !arg.startsWith('-'));
 
-  if (!target) {
-    console.error('Usage: npm run extract -- <path-to-document.txt> [--json]');
-    process.exitCode = 1;
+  if (!target || args.includes('--help') || args.includes('-h')) {
+    console.error(
+      [
+        'Usage: npx tsx src/cli/extract.ts <path-to-document.txt> [--json]',
+        '',
+        '  npm run extract -- <path>   also works; the path survives, but flags do not -',
+        '                              npm consumes "--json" as one of its own config keys.',
+      ].join('\n'),
+    );
+    process.exitCode = target ? 0 : 1;
     return;
   }
 

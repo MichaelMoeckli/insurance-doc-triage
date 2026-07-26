@@ -1,0 +1,283 @@
+{
+  "promptVersion": "v1",
+  "promptChangelog": "Baseline. Task definition, the null-on-ambiguity rule, and the urgency rubric.",
+  "model": "gpt-5-mini",
+  "timestamp": "2026-07-26T20:53:43.663Z",
+  "metrics": {
+    "documents": 25,
+    "completed": 25,
+    "fields": {
+      "policyNumber": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "claimantName": {
+        "strict": {
+          "correct": 24,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 24,
+          "total": 25
+        }
+      },
+      "dateOfLoss": {
+        "strict": {
+          "correct": 24,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 24,
+          "total": 25
+        }
+      },
+      "claimType": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "amount": {
+        "strict": {
+          "correct": 24,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 24,
+          "total": 25
+        }
+      },
+      "currency": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      }
+    },
+    "overall": {
+      "strict": {
+        "correct": 147,
+        "total": 150
+      },
+      "normalized": {
+        "correct": 147,
+        "total": 150
+      }
+    },
+    "missingFields": {
+      "exact": {
+        "correct": 23,
+        "total": 25
+      },
+      "precision": 0.9,
+      "recall": 1,
+      "f1": 0.9473684210526316
+    },
+    "urgency": {
+      "correct": 25,
+      "total": 25,
+      "underTriaged": 0
+    },
+    "category": {
+      "correct": 25,
+      "total": 25
+    },
+    "confusion": {
+      "urgency": {},
+      "category": {}
+    },
+    "usage": {
+      "inputTokens": 41641,
+      "outputTokens": 19325
+    },
+    "totalLatencyMs": 272421
+  },
+  "failures": [
+    {
+      "documentId": "liability-22-legal-deadline",
+      "field": "claimantName",
+      "category": "name-mismatch",
+      "severity": "hard",
+      "expected": "Stefan Hauser",
+      "actual": "Bertschi Logistik AG",
+      "note": "High on the deadline limb with no injury and an amount under 50k - the only document in the set where the deadline alone carries the urgency. Three competing names (insured, claimant company, opposing lawyer) and a law-firm reference posing as an identifier."
+    },
+    {
+      "documentId": "motor-06-relative-date",
+      "field": "amount",
+      "category": "missed-field",
+      "severity": "hard",
+      "expected": "2800",
+      "actual": "null",
+      "note": "\"Letzten Dienstag\" is relative and the email carries no send date, so the loss date cannot be resolved and must be null. A model that anchors the relative date to today's date will fail here, which is the point."
+    },
+    {
+      "documentId": "motor-06-relative-date",
+      "field": "missingFields",
+      "category": "spurious-missing-field",
+      "severity": "hard",
+      "expected": "dateOfLoss",
+      "actual": "dateOfLoss, amount",
+      "note": "\"Letzten Dienstag\" is relative and the email carries no send date, so the loss date cannot be resolved and must be null. A model that anchors the relative date to today's date will fail here, which is the point."
+    },
+    {
+      "documentId": "property-08-water-ongoing",
+      "field": "dateOfLoss",
+      "category": "missed-field",
+      "severity": "hard",
+      "expected": "2025-07-03",
+      "actual": "null",
+      "note": "High on the ongoing-damage limb: water is still escaping and the flat is uninhabitable. Tests that a null amount does not drag urgency down. With no amount stated there is no currency either, so both are missing."
+    },
+    {
+      "documentId": "property-08-water-ongoing",
+      "field": "missingFields",
+      "category": "spurious-missing-field",
+      "severity": "hard",
+      "expected": "amount, currency",
+      "actual": "dateOfLoss, amount, currency",
+      "note": "High on the ongoing-damage limb: water is still escaping and the flat is uninhabitable. Tests that a null amount does not drag urgency down. With no amount stated there is no currency either, so both are missing."
+    }
+  ],
+  "documents": [
+    {
+      "id": "health-15-hospital-invoice",
+      "summary": "[NORMAL] | health-treatment | Ingrid Baumann | policy KV-2024-556677 | CHF 1'840.00 | loss 2025-05-14 -> Adjudicate invoice RE-2025-118934 (ambulatory gastroscopy) for CHF 1,840 dated 14.05.2025 under policy KV-2024-556677: apply the CHF 300 franchise and any applicable co‑payment, reimburse the eligible remainder to Kantonsspital Aarau, and request clinical documentation only if medical necessity/coverage is unclear.",
+      "completed": true
+    },
+    {
+      "id": "health-16-ski-accident",
+      "summary": "[HIGH] | health-accident | Julia Meier | policy UV-2023-889100 | CHF 6'700.00 | loss 2025-02-08 -> Open an accident claim under policy UV-2023-889100 and contact the claimant to acknowledge receipt, obtain the operative report and full hospital medical records, the piste rescue report, the certificate of incapacity/sick note, and bank details for payment (verify the CHF 6,700 invoices and reserve payment pending review).",
+      "completed": true
+    },
+    {
+      "id": "health-17-physio-no-amount",
+      "summary": "[NORMAL] | health-treatment | Reto Bühler | policy KV-2022-443322 | amount unknown | loss 2025-06-18 | missing: amount, currency -> Request from the claimant a cost estimate and the currency (amount, currency), a copy of the GP prescription and the physiotherapy provider details (including planned start date), and confirm coverage under policy KV-2022-443322.",
+      "completed": true
+    },
+    {
+      "id": "health-18-dental-filling",
+      "summary": "[LOW] | health-treatment | Anna Schweizer | policy KV-2025-771234 | CHF 420.00 | loss 2025-07-01 -> Process reimbursement of CHF 420 to the claimant's bank account on file and confirm payment to the claimant; verify the attached receipt and policy (KV-2025-771234) before disbursing funds.",
+      "completed": true
+    },
+    {
+      "id": "health-19-month-only",
+      "summary": "[NORMAL] | health-treatment | Martin Frick | policy KV-2021-665544 | CHF 2'150.00 | loss date unknown | missing: dateOfLoss -> Contact the claimant to obtain the exact date(s) of treatment/first consultation (dateOfLoss) and request copies of the itemised invoices and any medical reports/doctor referral related to the March 2025 HNO consultations.",
+      "completed": true
+    },
+    {
+      "id": "health-20-workplace-fall",
+      "summary": "[HIGH] | health-accident | Goran Petrović | policy UV-2020-334455 | CHF 12'000.00 | loss 2025-04-25 -> Contact the employer/HR and hospital immediately to obtain the claimant's current medical status and initial medical report (diagnosis, treatment plan, expected length of stay), the SUVA notification/claim number, and any further estimated costs or follow-up reports.",
+      "completed": true
+    },
+    {
+      "id": "liability-21-dog-bite",
+      "summary": "[HIGH] | liability-third-party | Claudia Rieder | policy HP-2019-223344 | CHF 3'400.00 | loss 2025-05-30 -> Open as a high-priority third‑party liability claim and request from the claimant the injured party's contact details and consent to obtain medical reports, copies of all medical invoices and the jacket repair/replacement invoice, photos of the injury and scene, witness statements, and details on the dog (breed, vaccination status, prior incidents, and circumstances at the time of the bite).",
+      "completed": true
+    },
+    {
+      "id": "liability-22-legal-deadline",
+      "summary": "[HIGH] | liability-third-party | Bertschi Logistik AG | policy HP-2021-556611 | CHF 28'000.00 | loss 2025-03-12 -> Provide a written position on liability to Bertschi Logistik AG before 11 April 2025; meanwhile obtain from the insured a detailed incident report, driver identity and training records, witness statements, photos of damage and scene, vehicle/maintenance records, and confirm applicable coverages and any reservations of rights.",
+      "completed": true
+    },
+    {
+      "id": "liability-23-no-name",
+      "summary": "[NORMAL] | liability-third-party | unnamed claimant | policy HP-2023-990011 | CHF 3'200.00 | loss 2025-06-09 | missing: claimantName -> Contact the claimant to obtain the missing page 2 (which contains the insured's name) and confirm the claimant/insured identity; also request photos, repair invoices or estimates, and any witness contact details.",
+      "completed": true
+    },
+    {
+      "id": "liability-24-currency-unstated",
+      "summary": "[NORMAL] | liability-third-party | Miriam Kohler | policy HP-2022-778899 | ??? 3'200.00 | loss 2025-04-02 | missing: currency -> Assign to a liability handler and request from the claimant a copy of the landlord's invoice/repair receipt and proof repairs (contractor invoice or photos), confirmation that the landlord demands reimbursement, the landlord's contact details, the claimant's bank details for payment, and confirmation of the currency of the claimed amount.",
+      "completed": true
+    },
+    {
+      "id": "liability-25-certificate-request",
+      "summary": "[LOW] | liability-third-party | Erik Nussbaumer | policy HP-2018-445566 | amount unknown | loss 2025-02-05 | missing: amount, currency -> Send a PDF copy of the liability certificate for policy HP-2018-445566 to e.nussbaumer@bluewin.ch (verify the claimant's identity if required) and confirm by reply that no further action is needed.",
+      "completed": true
+    },
+    {
+      "id": "motor-01-collision-zurich",
+      "summary": "[NORMAL] | motor-collision | Andrea Vogt | policy CH-MOT-2019-447215 | CHF 12'450.00 | loss 2025-03-14 -> Open a motor-collision file, request and verify the attached garage cost estimate and photos, obtain the other party's details/insurance (if any) and any police report, and confirm the claimant's vehicle registration and preferred payout/bank details (note the CHF 500 deductible).",
+      "completed": true
+    },
+    {
+      "id": "motor-02-parking-bollard",
+      "summary": "[LOW] | motor-collision | Peter Steiner | policy MV-2024-0098331 | CHF 680.00 | loss date unknown | missing: dateOfLoss -> Contact the claimant to confirm the date of loss (06/07/2025 is stated in the email but not in extracted fields) and obtain vehicle registration number, VIN, photos of the damage, the body shop quote/invoice, and any police report (if applicable).",
+      "completed": true
+    },
+    {
+      "id": "motor-03-motorcycle-theft",
+      "summary": "[NORMAL] | motor-theft | Nadia Berger | policy CH-MOT-2021-773104 | CHF 18'900.00 | loss 2025-05-19 -> Open a motor-theft claim file and request from the insured a copy of the police report, proof of ownership/registration (including VIN), any photos or serial numbers, details of keys/spare keys and any financing or lien information.",
+      "completed": true
+    },
+    {
+      "id": "motor-04-highway-injury",
+      "summary": "[HIGH] | motor-collision | Marc Hodel | policy CH-MOT-2018-115540 | CHF 34'000.00 | loss 2025-04-11 -> Open a bodily-injury file and assign to the injury desk immediately; obtain the insured's hospital records and medical report from Spital Langenthal, request the cantonal police report, and collect third‑party identity/insurance details and witness statements.",
+      "completed": true
+    },
+    {
+      "id": "motor-05-missing-policy",
+      "summary": "[NORMAL] | motor-collision | Sandra Küng | policy unknown | CHF 4'200.00 | loss 2025-05-22 | missing: policyNumber -> Open the claim under the insured's policy—request the policy number immediately (policyNumber), a copy of the garage repair estimate, photos of the damage, vehicle registration/VIN, and contact details for the repair shop; confirm there were no injuries or third parties involved.",
+      "completed": true
+    },
+    {
+      "id": "motor-06-relative-date",
+      "summary": "[NORMAL] | motor-collision | Thomas Rüegg | policy CH-MOT-2022-330871 | amount unknown | loss date unknown | missing: dateOfLoss, amount -> Contact the claimant to confirm the date of loss, the claimed amount (garage estimate of CHF 2'800), obtain the other party's contact/insurance details and any photos or the repair estimate from Garage Sprenger, and ask whether a police report was filed.",
+      "completed": true
+    },
+    {
+      "id": "motor-07-accident-abroad-eur",
+      "summary": "[NORMAL] | motor-collision | Lea Frei | policy CH-MOT-2020-661234 | EUR 8'500.00 | loss 2025-02-27 -> Open the motor collision claim and contact the claimant to confirm whether she wants settlement in EUR or CHF and to obtain the original German garage estimate/invoice (and towing receipt), bank details for reimbursement, photos of the damage, vehicle registration, and any police report so you can convert the EUR 8,500 estimate to CHF and proceed.",
+      "completed": true
+    },
+    {
+      "id": "property-08-water-ongoing",
+      "summary": "[HIGH] | property-water | Beatrice Lüthi | policy CH-HH-2023-559012 | amount unknown | loss date unknown | missing: dateOfLoss, amount, currency -> Contact the claimant immediately by phone to confirm exact date/time of loss, whether the water flow has been stopped, obtain photos and contact details of the emergency plumbing service, a description/estimate of affected rooms and damage, and any temporary accommodation costs, and open an urgent water-damage file for policy CH-HH-2023-559012.",
+      "completed": true
+    },
+    {
+      "id": "property-09-kitchen-fire",
+      "summary": "[HIGH] | property-fire | David Amrein | policy CH-HH-2017-884401 | CHF 62'000.00 | loss 2025-01-18 -> Assign to a property-fire handler and request from the claimant the fire brigade report, a detailed itemised inventory with receipts or proof of ownership, photos of the damage, contractor repair estimates, and confirmation of any temporary accommodation or additional costs.",
+      "completed": true
+    },
+    {
+      "id": "property-10-burglary-basel",
+      "summary": "[NORMAL] | property-burglary | Simone Wyss | policy CH-HH-2022-102938 | CHF 7'350.00 | loss 2025-03-29 -> Open a burglary claim file and contact the claimant to request a copy of the police report and the detailed inventory with receipts/photos, repair invoice for the door, and the claimant's bank details for payout if not already provided.",
+      "completed": true
+    },
+    {
+      "id": "property-11-status-enquiry",
+      "summary": "[LOW] | property-water | Rolf Zimmermann | policy CH-HH-2021-447790 | amount unknown | loss 2025-04-08 | missing: amount, currency -> Locate policy CH-HH-2021-447790, update Rolf Zimmermann on the current claim status and send him a duplicate copy of the claim form; if the file lacks the claim amount and currency, request that information from the claimant.",
+      "completed": true
+    },
+    {
+      "id": "property-12-hail-roof",
+      "summary": "[NORMAL] | other | Ursula Hofer | policy CH-GEB-2019-772211 | CHF 9'800.00 | loss date unknown | missing: dateOfLoss -> Contact the claimant to confirm the date of loss (recorded in the letter as 03/04/2025), obtain photos of the damage, the roofer's report/contact details, and the final invoice or detailed repair estimate, and verify there is no ongoing water ingress or structural risk.",
+      "completed": true
+    },
+    {
+      "id": "property-13-pipe-burst",
+      "summary": "[NORMAL] | property-water | Kurt Egli | policy CH-GEB-2020-118833 | amount unknown | loss date unknown | missing: dateOfLoss, amount, currency -> Contact the claimant to obtain the exact date of loss, the claimed amount and currency, copies of the plumber invoice and photos of the damage, and arrange for a drying-company cost estimate plus an on-site inspection.",
+      "completed": true
+    },
+    {
+      "id": "property-14-attempted-break-in",
+      "summary": "[LOW] | property-burglary | Anita Stalder | policy CH-HH-2024-330099 | CHF 340.00 | loss 2025-06-15 -> Contact the claimant to request a copy of the police report, photos of the damaged window, and the glazier's written quote/invoice; then authorise repair or advise on next steps per policy terms and deductible.",
+      "completed": true
+    }
+  ]
+}

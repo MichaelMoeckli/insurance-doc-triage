@@ -18,8 +18,9 @@
 import { PROMPT_VERSION } from '../config.js';
 import type { PromptSet } from './types.js';
 import { v1 } from './v1.js';
+import { v2 } from './v2.js';
 
-export const PROMPT_SETS: Record<string, PromptSet> = { v1 };
+export const PROMPT_SETS: Record<string, PromptSet> = { v1, v2 };
 
 export function getPromptSet(version: string = PROMPT_VERSION): PromptSet {
   const set = PROMPT_SETS[version];

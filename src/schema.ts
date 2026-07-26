@@ -34,105 +34,107 @@ import {
  * Descriptions are load-bearing. They travel with the schema on every request and are
  * the cheapest place to put per-field instructions, so field-level rules live here and
  * the system prompt stays about task and policy.
+ *
+ * They are also, therefore, *part of the prompt* - which is why they are pulled out into
+ * named constants and spliced in by the builders below rather than inlined. A prompt
+ * version can override any one of them without forking the schema structure, so the diff
+ * between two versions stays readable and `v1` keeps emitting byte-identical requests
+ * after `v2` exists. Changing a description in place would silently invalidate every
+ * result already recorded under an earlier version.
  */
-export const EXTRACTION_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: [
-    'policyNumber',
-    'claimantName',
-    'dateOfLoss',
-    'claimType',
-    'amount',
-    'currency',
-    'missingFields',
-    'sourceQuotes',
-  ],
-  properties: {
-    policyNumber: {
-      type: ['string', 'null'],
-      description:
-        'The policy or contract number exactly as written in the document, including any letter prefix and separators. Not the claim/file/reference number. Null if absent or ambiguous.',
-    },
-    claimantName: {
-      type: ['string', 'null'],
-      description:
-        'Full name of the policyholder or claimant, without salutation or title. Not the broker, adjuster, garage, or hospital. Null if absent or ambiguous.',
-    },
-    dateOfLoss: {
-      type: ['string', 'null'],
-      description:
-        'The date the loss or incident occurred, as ISO 8601 YYYY-MM-DD. Not the date the document was written or reported. Null if absent, relative ("last Tuesday"), imprecise (month only), or written in a format that admits more than one reading.',
-    },
-    claimType: {
-      type: ['string', 'null'],
-      enum: [...CLAIM_TYPES, null],
-      description: 'Line of business the claim belongs to. Null only if genuinely indeterminable.',
-    },
-    amount: {
-      type: ['number', 'null'],
-      description:
-        'The claimed or estimated loss amount as a plain number, no thousands separators and a dot decimal point. Swiss documents write 12’450.00 and German ones 8.500,00 - both are 12450 and 8500. Prefer the claimed/estimated total over a deductible, excess, or premium. Null if absent or ambiguous.',
-    },
-    currency: {
-      type: ['string', 'null'],
-      enum: [...CURRENCIES, null],
-      description:
-        'ISO 4217 code for the amount. "Fr.", "SFr.", "CHF" and "Franken" are CHF. Do not assume CHF merely because the document is Swiss - use the currency actually stated with the amount. Null if no currency is stated.',
-    },
-    missingFields: {
-      type: 'array',
-      description:
-        'Names of the fields above that you set to null because the document does not state them, or states them ambiguously. Must be exactly consistent with the nulls you emitted.',
-      items: { type: 'string', enum: [...EXTRACTED_FIELDS] },
-    },
-    sourceQuotes: {
-      type: 'array',
-      description:
-        'For each field you did fill in, the short verbatim span from the document you took it from. Omit entries for fields you set to null.',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['field', 'quote'],
-        properties: {
-          field: { type: 'string', enum: [...EXTRACTED_FIELDS] },
-          quote: {
-            type: 'string',
-            description: 'Verbatim text copied from the document, at most about 100 characters.',
+export const EXTRACTION_FIELD_DESCRIPTIONS = {
+  policyNumber:
+    'The policy or contract number exactly as written in the document, including any letter prefix and separators. Not the claim/file/reference number. Null if absent or ambiguous.',
+  claimantName:
+    'Full name of the policyholder or claimant, without salutation or title. Not the broker, adjuster, garage, or hospital. Null if absent or ambiguous.',
+  dateOfLoss:
+    'The date the loss or incident occurred, as ISO 8601 YYYY-MM-DD. Not the date the document was written or reported. Null if absent, relative ("last Tuesday"), imprecise (month only), or written in a format that admits more than one reading.',
+  claimType: 'Line of business the claim belongs to. Null only if genuinely indeterminable.',
+  amount:
+    'The claimed or estimated loss amount as a plain number, no thousands separators and a dot decimal point. Swiss documents write 12’450.00 and German ones 8.500,00 - both are 12450 and 8500. Prefer the claimed/estimated total over a deductible, excess, or premium. Null if absent or ambiguous.',
+  currency:
+    'ISO 4217 code for the amount. "Fr.", "SFr.", "CHF" and "Franken" are CHF. Do not assume CHF merely because the document is Swiss - use the currency actually stated with the amount. Null if no currency is stated.',
+  missingFields:
+    'Names of the fields above that you set to null because the document does not state them, or states them ambiguously. Must be exactly consistent with the nulls you emitted.',
+  sourceQuotes:
+    'For each field you did fill in, the short verbatim span from the document you took it from. Omit entries for fields you set to null.',
+} as const;
+
+export const TRIAGE_FIELD_DESCRIPTIONS = {
+  urgency: 'How fast a human handler must pick this up. Apply the rubric in the instructions.',
+  category:
+    'Routing category. Choose the closest match from the list; use "other" only when no category applies.',
+  recommendedAction:
+    'One imperative sentence telling the handler what to do next, naming any specific information that must be requested from the claimant.',
+  rationale: 'One or two sentences justifying the urgency and category, citing the document.',
+} as const;
+
+export type ExtractionDescriptionOverrides = Partial<Record<keyof typeof EXTRACTION_FIELD_DESCRIPTIONS, string>>;
+export type TriageDescriptionOverrides = Partial<Record<keyof typeof TRIAGE_FIELD_DESCRIPTIONS, string>>;
+
+/** Builds the extraction schema, with per-field description overrides for a prompt version. */
+export function buildExtractionSchema(overrides: ExtractionDescriptionOverrides = {}): Record<string, unknown> {
+  const d = { ...EXTRACTION_FIELD_DESCRIPTIONS, ...overrides };
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'policyNumber',
+      'claimantName',
+      'dateOfLoss',
+      'claimType',
+      'amount',
+      'currency',
+      'missingFields',
+      'sourceQuotes',
+    ],
+    properties: {
+      policyNumber: { type: ['string', 'null'], description: d.policyNumber },
+      claimantName: { type: ['string', 'null'], description: d.claimantName },
+      dateOfLoss: { type: ['string', 'null'], description: d.dateOfLoss },
+      claimType: { type: ['string', 'null'], enum: [...CLAIM_TYPES, null], description: d.claimType },
+      amount: { type: ['number', 'null'], description: d.amount },
+      currency: { type: ['string', 'null'], enum: [...CURRENCIES, null], description: d.currency },
+      missingFields: {
+        type: 'array',
+        description: d.missingFields,
+        items: { type: 'string', enum: [...EXTRACTED_FIELDS] },
+      },
+      sourceQuotes: {
+        type: 'array',
+        description: d.sourceQuotes,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['field', 'quote'],
+          properties: {
+            field: { type: 'string', enum: [...EXTRACTED_FIELDS] },
+            quote: {
+              type: 'string',
+              description: 'Verbatim text copied from the document, at most about 100 characters.',
+            },
           },
         },
       },
     },
-  },
-} as const;
+  };
+}
 
-export const TRIAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['urgency', 'category', 'recommendedAction', 'rationale'],
-  properties: {
-    urgency: {
-      type: 'string',
-      enum: [...URGENCIES],
-      description: 'How fast a human handler must pick this up. Apply the rubric in the instructions.',
+/** Builds the triage schema, with per-field description overrides for a prompt version. */
+export function buildTriageSchema(overrides: TriageDescriptionOverrides = {}): Record<string, unknown> {
+  const d = { ...TRIAGE_FIELD_DESCRIPTIONS, ...overrides };
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['urgency', 'category', 'recommendedAction', 'rationale'],
+    properties: {
+      urgency: { type: 'string', enum: [...URGENCIES], description: d.urgency },
+      category: { type: 'string', enum: [...CATEGORIES], description: d.category },
+      recommendedAction: { type: 'string', description: d.recommendedAction },
+      rationale: { type: 'string', description: d.rationale },
     },
-    category: {
-      type: 'string',
-      enum: [...CATEGORIES],
-      description:
-        'Routing category. Choose the closest match from the list; use "other" only when no category applies.',
-    },
-    recommendedAction: {
-      type: 'string',
-      description:
-        'One imperative sentence telling the handler what to do next, naming any specific information that must be requested from the claimant.',
-    },
-    rationale: {
-      type: 'string',
-      description: 'One or two sentences justifying the urgency and category, citing the document.',
-    },
-  },
-} as const;
+  };
+}
 
 /** Schema names, as sent in `text.format.name`. Also used in error messages. */
 export const EXTRACTION_SCHEMA_NAME = 'extraction_result';

@@ -1,11 +1,15 @@
 /**
  * The eval harness.
  *
- *   npm run eval
- *   npm run eval -- --validate-only        check the dataset offline, no API calls
- *   npm run eval -- --limit 5              cheap smoke run
- *   npm run eval -- --doc motor-04         one document, by id substring
- *   npm run eval -- --concurrency 8
+ *   npm run eval                                  the full set
+ *   npm run eval:validate                         check the dataset offline, no API calls
+ *   npm run eval:smoke                            the first 5 documents
+ *   npx tsx src/cli/eval.ts --doc motor-04        any other flag combination
+ *
+ * Flags go through `npx tsx` rather than `npm run ... --`, because npm consumes any
+ * `--flag` after the `--` separator as one of its own config keys and forwards only the
+ * value. It is shell-dependent - it bites on Windows and PowerShell - so the two common
+ * invocations get their own scripts above and `--help` explains the rest.
  *
  * Writes `results/run-<version>.json` and regenerates `results.md`.
  */
@@ -25,10 +29,34 @@ interface Options {
   limit: number | undefined;
   doc: string | undefined;
   concurrency: number;
+  help: boolean;
 }
 
+const USAGE = `claim-triage eval
+
+  npx tsx src/cli/eval.ts [options]
+
+  --validate-only      validate the dataset offline; no API calls, nothing written
+  --limit <n>          run only the first n documents
+  --doc <substring>    run only documents whose id contains this substring
+  --concurrency <n>    documents in flight at once (default 4)
+  --help
+
+  npm run eval             the full set
+  npm run eval:validate    same as --validate-only
+  npm run eval:smoke       same as --limit 5
+
+Pass other flags through "npx tsx" rather than "npm run eval -- ...": npm treats a
+"--flag" after "--" as one of its own config keys and forwards only the value.`;
+
 function parseArgs(argv: readonly string[]): Options {
-  const options: Options = { validateOnly: false, limit: undefined, doc: undefined, concurrency: 4 };
+  const options: Options = {
+    validateOnly: false,
+    limit: undefined,
+    doc: undefined,
+    concurrency: 4,
+    help: false,
+  };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -51,8 +79,20 @@ function parseArgs(argv: readonly string[]): Options {
       case '--concurrency':
         options.concurrency = Number(next());
         break;
+      case '--help':
+      case '-h':
+        options.help = true;
+        break;
       default:
-        throw new Error(`Unknown argument: ${arg}`);
+        // A bare value with no flag in front of it is almost always npm having eaten
+        // the flag, so say so instead of just rejecting the argument.
+        throw new Error(
+          arg.startsWith('-')
+            ? `Unknown argument: ${arg}\n\n${USAGE}`
+            : `Unexpected argument "${arg}". If you ran "npm run eval -- --limit ${arg}", npm ` +
+              `stripped the flag and passed only the value.\nUse "npx tsx src/cli/eval.ts ` +
+              `--limit ${arg}", or "npm run eval:smoke" / "npm run eval:validate".`,
+        );
     }
   }
 
@@ -108,6 +148,11 @@ async function scoreDocument(doc: LabelledDocument): Promise<DocumentComparison>
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+
+  if (options.help) {
+    console.log(USAGE);
+    return;
+  }
 
   const dataset = await loadDataset(options.doc, options.limit);
   console.error(`Dataset OK: ${dataset.length} document/label pairs validated.`);

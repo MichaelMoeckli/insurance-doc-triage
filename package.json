@@ -10,6 +10,8 @@
   "scripts": {
     "extract": "tsx src/cli/extract.ts",
     "eval": "tsx src/cli/eval.ts",
+    "eval:validate": "tsx src/cli/eval.ts --validate-only",
+    "eval:smoke": "tsx src/cli/eval.ts --limit 5",
     "test": "node --import tsx --test src/eval/normalize.test.ts src/eval/compare.test.ts",
     "typecheck": "tsc --noEmit"
   },

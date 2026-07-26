@@ -9,6 +9,7 @@
  * breaks and then make one targeted change. See the README for the v2 recipe.
  */
 
+import { buildExtractionSchema, buildTriageSchema } from '../schema.js';
 import type { PromptSet } from './types.js';
 
 /**
@@ -63,6 +64,9 @@ export const v1: PromptSet = {
   changelog: 'Baseline. Task definition, the null-on-ambiguity rule, and the urgency rubric.',
   extractionInstructions: EXTRACTION_INSTRUCTIONS,
   triageInstructions: TRIAGE_INSTRUCTIONS,
+  // No overrides: the schema descriptions exactly as v1 was measured with.
+  extractionSchema: buildExtractionSchema(),
+  triageSchema: buildTriageSchema(),
 
   buildExtractionInput(documentText) {
     return `Extract the structured fields from this document.\n\n<document>\n${documentText}\n</document>`;

@@ -15,6 +15,16 @@ export interface PromptSet {
   changelog: string;
   extractionInstructions: string;
   triageInstructions: string;
+  /**
+   * The JSON Schemas, built via `buildExtractionSchema` / `buildTriageSchema`.
+   *
+   * The schemas belong to the version because their field `description`s are prompt
+   * text - they are sent on every request and the model follows them. Sharing one
+   * mutable schema across versions would mean editing a description silently changed
+   * what every earlier version had been measured on.
+   */
+  extractionSchema: Record<string, unknown>;
+  triageSchema: Record<string, unknown>;
   buildExtractionInput(documentText: string): string;
   buildTriageInput(
     documentText: string,
