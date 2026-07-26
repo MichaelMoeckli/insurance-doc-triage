@@ -1,0 +1,12 @@
+{
+  "policyNumber": "KV-2024-556677",
+  "claimantName": "Ingrid Baumann",
+  "dateOfLoss": "2025-05-14",
+  "claimType": "health",
+  "amount": 1840,
+  "currency": "CHF",
+  "missingFields": [],
+  "urgency": "normal",
+  "category": "health-treatment",
+  "notes": "Third-party sender: the claimant is the patient, not the hospital. Distractors: invoice number RE-2025-118934, the CHF 300 franchise, and the letter date 20.05 against the treatment date 14.05."
+}

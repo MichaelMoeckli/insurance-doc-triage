@@ -1,0 +1,12 @@
+{
+  "policyNumber": "UV-2020-334455",
+  "claimantName": "Goran Petrović",
+  "dateOfLoss": "2025-04-25",
+  "claimType": "health",
+  "amount": 12000,
+  "currency": "CHF",
+  "missingFields": [],
+  "urgency": "high",
+  "category": "health-accident",
+  "notes": "The nastiest name distractor in the set: the HR contact Vesna Petrović shares a surname with the injured employee, and the employer is Petrović Bau AG. Also tests claimType - a UVG workplace accident is health, not liability."
+}

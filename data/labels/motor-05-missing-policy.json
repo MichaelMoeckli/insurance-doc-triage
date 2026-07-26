@@ -1,0 +1,12 @@
+{
+  "policyNumber": null,
+  "claimantName": "Sandra Küng",
+  "dateOfLoss": "2025-05-22",
+  "claimType": "motor",
+  "amount": 4200,
+  "currency": "CHF",
+  "missingFields": ["policyNumber"],
+  "urgency": "normal",
+  "category": "motor-collision",
+  "notes": "Tests the missing-required-field path. The document explicitly says the policy number was not available, so it must be null and declared. The call date 23.05 is a distractor for the loss date 22.05."
+}

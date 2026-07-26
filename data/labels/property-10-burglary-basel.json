@@ -1,0 +1,12 @@
+{
+  "policyNumber": "CH-HH-2022-102938",
+  "claimantName": "Simone Wyss",
+  "dateOfLoss": "2025-03-29",
+  "claimType": "property",
+  "amount": 7350,
+  "currency": "CHF",
+  "missingFields": [],
+  "urgency": "normal",
+  "category": "property-burglary",
+  "notes": "Two identifier distractors compete with the policy number: the insurer's own claim reference SCH-2025-0341 in the header, and the police report number."
+}

@@ -1,0 +1,12 @@
+{
+  "policyNumber": "HP-2023-990011",
+  "claimantName": null,
+  "dateOfLoss": "2025-06-09",
+  "claimType": "liability",
+  "amount": 3200,
+  "currency": "CHF",
+  "missingFields": ["claimantName"],
+  "urgency": "normal",
+  "category": "liability-third-party",
+  "notes": "The only document with no claimant name at all. Currency notation trap: \"Fr. 3'200.—\" is CHF 3200, where the em dash stands for .00 in Swiss usage."
+}

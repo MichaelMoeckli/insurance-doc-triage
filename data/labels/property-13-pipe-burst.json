@@ -1,0 +1,12 @@
+{
+  "policyNumber": "CH-GEB-2020-118833",
+  "claimantName": "Kurt Egli",
+  "dateOfLoss": null,
+  "claimType": "property",
+  "amount": null,
+  "currency": null,
+  "missingFields": ["dateOfLoss", "amount", "currency"],
+  "urgency": "normal",
+  "category": "property-water",
+  "notes": "Three of the five required fields are unresolvable. \"Anfang Juni\" gives a month but no day. Water damage that is contained and already repaired stays normal - contrast with property-08, where it is still running."
+}

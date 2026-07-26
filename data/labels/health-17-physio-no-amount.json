@@ -1,0 +1,12 @@
+{
+  "policyNumber": "KV-2022-443322",
+  "claimantName": "Reto Bühler",
+  "dateOfLoss": "2025-06-18",
+  "claimType": "health",
+  "amount": null,
+  "currency": null,
+  "missingFields": ["amount", "currency"],
+  "urgency": "normal",
+  "category": "health-treatment",
+  "notes": "Pre-approval request rather than a claim. The prescription date is the only date in the document and stands in for the loss date - a judgement call, recorded here so the label is reproducible."
+}

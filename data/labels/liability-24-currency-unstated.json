@@ -1,0 +1,12 @@
+{
+  "policyNumber": "HP-2022-778899",
+  "claimantName": "Miriam Kohler",
+  "dateOfLoss": "2025-04-02",
+  "claimType": "liability",
+  "amount": 3200,
+  "currency": null,
+  "missingFields": ["currency"],
+  "urgency": "normal",
+  "category": "liability-third-party",
+  "notes": "A bare \"3,200\" with no currency anywhere in the document. Inferring CHF because the insurer is Swiss is exactly the assumption the prompt forbids, so the currency must be null and declared."
+}

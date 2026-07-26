@@ -1,0 +1,12 @@
+{
+  "policyNumber": "CH-MOT-2022-330871",
+  "claimantName": "Thomas Rüegg",
+  "dateOfLoss": null,
+  "claimType": "motor",
+  "amount": 2800,
+  "currency": "CHF",
+  "missingFields": ["dateOfLoss"],
+  "urgency": "normal",
+  "category": "motor-collision",
+  "notes": "\"Letzten Dienstag\" is relative and the email carries no send date, so the loss date cannot be resolved and must be null. A model that anchors the relative date to today's date will fail here, which is the point."
+}

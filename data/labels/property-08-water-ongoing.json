@@ -1,0 +1,12 @@
+{
+  "policyNumber": "CH-HH-2023-559012",
+  "claimantName": "Beatrice Lüthi",
+  "dateOfLoss": "2025-07-03",
+  "claimType": "property",
+  "amount": null,
+  "currency": null,
+  "missingFields": ["amount", "currency"],
+  "urgency": "high",
+  "category": "property-water",
+  "notes": "High on the ongoing-damage limb: water is still escaping and the flat is uninhabitable. Tests that a null amount does not drag urgency down. With no amount stated there is no currency either, so both are missing."
+}

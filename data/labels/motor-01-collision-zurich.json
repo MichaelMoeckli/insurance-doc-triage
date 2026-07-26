@@ -1,0 +1,12 @@
+{
+  "policyNumber": "CH-MOT-2019-447215",
+  "claimantName": "Andrea Vogt",
+  "dateOfLoss": "2025-03-14",
+  "claimType": "motor",
+  "amount": 12450,
+  "currency": "CHF",
+  "missingFields": [],
+  "urgency": "normal",
+  "category": "motor-collision",
+  "notes": "Clean baseline. Two traps: the Swiss apostrophe thousands separator (12'450.00), and a CHF 500 deductible that must not be mistaken for the claimed amount."
+}

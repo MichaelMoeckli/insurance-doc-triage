@@ -1,0 +1,12 @@
+{
+  "policyNumber": "CH-MOT-2018-115540",
+  "claimantName": "Marc Hodel",
+  "dateOfLoss": "2025-04-11",
+  "claimType": "motor",
+  "amount": 34000,
+  "currency": "CHF",
+  "missingFields": [],
+  "urgency": "high",
+  "category": "motor-collision",
+  "notes": "High on the injury limb of the rubric, not the amount limb (CHF 34,000 is under the 50k threshold). Distractors: the internal file reference CLM-2025-04-0771 is not the policy number, and the adjuster R. Odermatt is not the claimant."
+}

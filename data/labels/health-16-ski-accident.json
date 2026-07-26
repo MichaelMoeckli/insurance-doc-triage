@@ -1,0 +1,12 @@
+{
+  "policyNumber": "UV-2023-889100",
+  "claimantName": "Julia Meier",
+  "dateOfLoss": "2025-02-08",
+  "claimType": "health",
+  "amount": 6700,
+  "currency": "CHF",
+  "missingFields": [],
+  "urgency": "high",
+  "category": "health-accident",
+  "notes": "High on the injury limb. The surgery date (9 February) is a distractor for the accident date. \"so far\" signals an open-ended total, but a single stated figure is still extractable."
+}

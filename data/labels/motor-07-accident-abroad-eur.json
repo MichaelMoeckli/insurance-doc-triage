@@ -1,0 +1,12 @@
+{
+  "policyNumber": "CH-MOT-2020-661234",
+  "claimantName": "Lea Frei",
+  "dateOfLoss": "2025-02-27",
+  "claimType": "motor",
+  "amount": 8500,
+  "currency": "EUR",
+  "missingFields": [],
+  "urgency": "normal",
+  "category": "motor-collision",
+  "notes": "Currency trap: a Swiss policy with a euro amount, written German-style as 8.500,00. Reading the dot as a decimal point gives 8.5, and defaulting the currency to CHF because the insurer is Swiss is the other failure mode."
+}

@@ -1,0 +1,12 @@
+{
+  "policyNumber": "KV-2025-771234",
+  "claimantName": "Anna Schweizer",
+  "dateOfLoss": "2025-07-01",
+  "claimType": "health",
+  "amount": 420,
+  "currency": "CHF",
+  "missingFields": [],
+  "urgency": "low",
+  "category": "health-treatment",
+  "notes": "Straightforward low-value reimbursement. Present as a control: if this one is scored wrong, the failure is in the pipeline, not in the difficulty of the document."
+}

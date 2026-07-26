@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.local
+dist/
+.DS_Store
+
+# Per-document raw pipeline output from eval runs. The aggregated
+# results/run-<version>.json records ARE committed - they drive the
+# version-comparison table in results.md.
+results/raw/

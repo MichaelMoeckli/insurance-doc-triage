@@ -1,0 +1,12 @@
+{
+  "policyNumber": "MV-2024-0098331",
+  "claimantName": "Peter Steiner",
+  "dateOfLoss": null,
+  "claimType": "motor",
+  "amount": 680,
+  "currency": "CHF",
+  "missingFields": ["dateOfLoss"],
+  "urgency": "low",
+  "category": "motor-collision",
+  "notes": "06/07/2025 is genuinely ambiguous between 6 July and 7 June in a Swiss/English mixed context, so the date must be null. Low urgency: no injury, nothing ongoing, amount under CHF 1,000."
+}

@@ -1,0 +1,12 @@
+{
+  "policyNumber": "HP-2018-445566",
+  "claimantName": "Erik Nussbaumer",
+  "dateOfLoss": "2025-02-05",
+  "claimType": "liability",
+  "amount": null,
+  "currency": null,
+  "missingFields": ["amount", "currency"],
+  "urgency": "low",
+  "category": "liability-third-party",
+  "notes": "Administrative document request referencing a closed incident. \"my neighbour's insurer has asked me\" is a soft urgency cue with no actual deadline attached - the rubric requires a stated deadline, so this stays low."
+}
