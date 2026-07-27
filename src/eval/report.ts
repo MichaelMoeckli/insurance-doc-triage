@@ -1,10 +1,16 @@
 /**
  * Run persistence and the `results.md` report.
  *
- * Each run writes `results/run-<version>.json`. The report then reads *every* run
- * record on disk and renders them side by side, so the v1 vs v2 comparison table
- * appears the moment a second version has been run - no bookkeeping, no copy-paste, and
- * no opportunity to compare a fresh run against a half-remembered old number.
+ * Each run writes `results/run-<version>--<model>.json`. The report then reads *every*
+ * run record on disk and renders them side by side, so the comparison table appears the
+ * moment a second run exists - no bookkeeping, no copy-paste, and no opportunity to
+ * compare a fresh run against a half-remembered old number.
+ *
+ * A run is identified by the *pair* (prompt version, model), not by prompt version
+ * alone. Keying on the version alone meant re-running `v2` against a different model
+ * silently overwrote the record of the first one - which is the one comparison this
+ * harness most needs to support, since "is 96% a prompt problem or a model ceiling?"
+ * is only answerable by holding the prompt fixed and changing the model.
  */
 
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
@@ -97,43 +103,120 @@ function td(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Run identity
+// ---------------------------------------------------------------------------
+
+/** The pair that identifies a run. Everything below keys on this, never on version alone. */
+export type RunIdentity = Pick<RunRecord, 'promptVersion' | 'model'>;
+
+/** Human-readable run id, for CLI output, error messages and column headers. */
+export function runKey(record: RunIdentity): string {
+  return `${record.promptVersion}@${record.model}`;
+}
+
+/**
+ * Filesystem-safe path segment. Model ids are vendor strings and only *usually* look
+ * like `gpt-5-mini`; a slash or colon in one would otherwise write outside `results/`.
+ *
+ * Dots survive, because `gpt-4.1-mini` needs them - so leading dots are stripped
+ * separately to keep the result from ever being `.` or `..`.
+ */
+function slug(value: string): string {
+  const cleaned = value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^\.+/, '');
+  return cleaned || 'unknown';
+}
+
+/**
+ * `<version>--<model>`, e.g. `v2--gpt-5-mini`.
+ *
+ * Both halves may themselves contain a hyphen, so this is deliberately not parseable
+ * back into its parts - nothing needs to. The file name exists to be unique and
+ * legible in a directory listing; the authoritative version and model are fields
+ * inside the record.
+ */
+export function runSlug(record: RunIdentity): string {
+  return `${slug(record.promptVersion)}--${slug(record.model)}`;
+}
+
+/** File name of a run record, relative to `results/`. */
+export function runFileName(record: RunIdentity): string {
+  return `run-${runSlug(record)}.json`;
+}
+
+/** Sort order for the comparison table: prompt version first, then model. */
+export function compareRuns(a: RunIdentity, b: RunIdentity): number {
+  const byVersion = a.promptVersion.localeCompare(b.promptVersion, 'en', { numeric: true });
+  return byVersion !== 0 ? byVersion : a.model.localeCompare(b.model, 'en', { numeric: true });
+}
+
+// ---------------------------------------------------------------------------
 // Persistence
 // ---------------------------------------------------------------------------
 
 export async function saveRun(record: RunRecord, comparisons: readonly DocumentComparison[]): Promise<void> {
   await mkdir(PATHS.rawResults, { recursive: true });
   await writeFile(
-    path.join(PATHS.results, `run-${record.promptVersion}.json`),
+    path.join(PATHS.results, runFileName(record)),
     `${JSON.stringify(record, null, 2)}\n`,
     'utf8',
   );
   // Per-document detail is gitignored: useful while iterating, noise in a diff.
   await writeFile(
-    path.join(PATHS.rawResults, `${record.promptVersion}-documents.json`),
+    path.join(PATHS.rawResults, `${runSlug(record)}-documents.json`),
     `${JSON.stringify(comparisons, null, 2)}\n`,
     'utf8',
   );
 }
 
-/** Loads every saved run, newest-version-last, for the comparison table. */
-export async function loadRuns(): Promise<RunRecord[]> {
+/** A parsed file is only a run record if it carries the two fields everything keys on. */
+function isRunRecord(value: unknown): value is RunRecord {
+  const record = value as Partial<RunRecord> | null;
+  return (
+    typeof record === 'object' &&
+    record !== null &&
+    typeof record.promptVersion === 'string' &&
+    record.promptVersion !== '' &&
+    typeof record.model === 'string' &&
+    record.model !== ''
+  );
+}
+
+/**
+ * Loads every saved run, ordered by `compareRuns`, for the comparison table.
+ *
+ * `directory` is a parameter only so the dedupe and ordering rules can be tested against
+ * a temporary directory; every caller uses the default.
+ */
+export async function loadRuns(directory: string = PATHS.results): Promise<RunRecord[]> {
   let files: string[];
   try {
-    files = await readdir(PATHS.results);
+    files = await readdir(directory);
   } catch {
     return [];
   }
 
-  const records: RunRecord[] = [];
+  const byKey = new Map<string, RunRecord>();
   for (const file of files.filter((f) => /^run-.+\.json$/.test(f))) {
     try {
-      records.push(JSON.parse(await readFile(path.join(PATHS.results, file), 'utf8')) as RunRecord);
+      const parsed: unknown = JSON.parse(await readFile(path.join(directory, file), 'utf8'));
+      if (!isRunRecord(parsed)) continue;
+      // Two files can describe the same run - a `run-v2.json` left over from before
+      // records were keyed by model, beside its `run-v2--gpt-5-mini.json` replacement.
+      // Keep the newer, so a stale leftover can never shadow a fresh run or appear
+      // twice in the comparison table as two identical columns.
+      const existing = byKey.get(runKey(parsed));
+      if (!existing || existing.timestamp.localeCompare(parsed.timestamp) < 0) {
+        byKey.set(runKey(parsed), parsed);
+      }
     } catch {
       // A corrupt or hand-edited run record should not stop the current run from
       // reporting. It simply drops out of the comparison.
     }
   }
-  return records.sort((a, b) => a.promptVersion.localeCompare(b.promptVersion, 'en', { numeric: true }));
+  return [...byKey.values()].sort(compareRuns);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,21 +486,45 @@ export function renderReport(current: RunRecord, allRuns: readonly RunRecord[]):
     lines.push('');
   }
 
-  // --- Version comparison -------------------------------------------------
-  lines.push('## Prompt version comparison');
+  // --- Run comparison -----------------------------------------------------
+  //
+  // Runs vary along two axes now that records are keyed by (version, model). When every
+  // run on disk shares one model the model is noise in a column header, so it is only
+  // shown once there is more than one - which also keeps this section byte-identical to
+  // what it rendered when a run was identified by its prompt version alone.
+  const models = new Set(allRuns.map((r) => r.model));
+  const versions = new Set(allRuns.map((r) => r.promptVersion));
+  const showModel = models.size > 1;
+  const columnLabel = (run: RunRecord): string =>
+    showModel ? `\`${run.promptVersion}\` · \`${run.model}\`` : `\`${run.promptVersion}\``;
+
+  lines.push(showModel ? '## Run comparison' : '## Prompt version comparison');
   lines.push('');
   if (allRuns.length < 2) {
     lines.push(
-      `Only \`${current.promptVersion}\` has been run. Add a version under \`src/prompts/\`, ` +
-        'register it in `src/prompts/index.ts`, then run `PROMPT_VERSION=v2 npm run eval` - ' +
-        'this table fills in automatically.',
+      `Only \`${runKey(current)}\` has been run. This table fills in automatically once a ` +
+        'second run record exists, along either axis: a new prompt version under ' +
+        '`src/prompts/` registered in `src/prompts/index.ts`, or the same prompt version ' +
+        'against a different `OPENAI_MODEL`.',
     );
     lines.push('');
   } else {
     const baseline = allRuns[0]!;
-    lines.push(`Deltas are against \`${baseline.promptVersion}\`, in percentage points.`);
+    lines.push(
+      `Deltas are against \`${showModel ? runKey(baseline) : baseline.promptVersion}\`, in percentage points.`,
+    );
     lines.push('');
-    const header = ['Metric', ...allRuns.map((r) => `\`${r.promptVersion}\``)];
+    if (showModel && versions.size > 1) {
+      // The README's own rule - one change per version - applied to the table itself.
+      lines.push(
+        '**Two axes are in play.** These runs differ in prompt version *and* in model, so ' +
+          'a delta between two columns that differ in both is not attributable to either ' +
+          'one. Read along a single axis: hold the model fixed and vary the prompt, or hold ' +
+          'the prompt fixed and vary the model.',
+      );
+      lines.push('');
+    }
+    const header = ['Metric', ...allRuns.map(columnLabel)];
     lines.push(`| ${header.join(' | ')} |`);
     lines.push(`| ${header.map(() => '---').join(' | ')} |`);
 

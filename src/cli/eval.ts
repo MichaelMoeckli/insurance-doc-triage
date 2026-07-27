@@ -11,7 +11,10 @@
  * value. It is shell-dependent - it bites on Windows and PowerShell - so the two common
  * invocations get their own scripts above and `--help` explains the rest.
  *
- * Writes `results/run-<version>.json` and regenerates `results.md`.
+ * Writes `results/run-<version>--<model>.json` and regenerates `results.md`. Records are
+ * keyed by prompt version *and* model, so re-running one prompt version against a
+ * different `OPENAI_MODEL` adds a column to the comparison table instead of overwriting
+ * the first result.
  */
 
 import { MODEL, PROMPT_VERSION, estimateCostUsd } from '../config.js';
@@ -22,7 +25,7 @@ import { runPipeline } from '../pipeline/run.js';
 import type { LabelledDocument } from '../types.js';
 import { aggregate, compareDocument, failedDocument, type DocumentComparison } from '../eval/compare.js';
 import { DatasetError, loadDataset } from '../eval/dataset.js';
-import { loadRuns, renderReport, saveRun, writeReport, type RunRecord } from '../eval/report.js';
+import { loadRuns, renderReport, runFileName, saveRun, writeReport, type RunRecord } from '../eval/report.js';
 
 interface Options {
   validateOnly: boolean;
@@ -210,7 +213,7 @@ async function main(): Promise<void> {
       `, ${Math.round(metrics.totalLatencyMs / completedDocs).toLocaleString('en')} ms mean per document`,
   );
   console.error('');
-  console.error('Wrote results.md and results/run-' + record.promptVersion + '.json');
+  console.error(`Wrote results.md and results/${runFileName(record)}`);
 }
 
 main().catch((error: unknown) => {

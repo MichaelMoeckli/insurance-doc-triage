@@ -1,0 +1,437 @@
+{
+  "promptVersion": "v2",
+  "promptChangelog": "Targets name-mismatch: the claimantName schema description said \"policyholder or claimant\", which are opposite parties on a liability claim. Now defines it as the policyholder explicitly. Single-string change; instructions and all other field descriptions identical to v1.",
+  "model": "gpt-5",
+  "timestamp": "2026-07-27T21:36:47.185Z",
+  "metrics": {
+    "documents": 25,
+    "completed": 25,
+    "fields": {
+      "policyNumber": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "claimantName": {
+        "strict": {
+          "correct": 23,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 23,
+          "total": 25
+        }
+      },
+      "dateOfLoss": {
+        "strict": {
+          "correct": 23,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 23,
+          "total": 25
+        }
+      },
+      "claimType": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "amount": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "currency": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      }
+    },
+    "overall": {
+      "strict": {
+        "correct": 146,
+        "total": 150
+      },
+      "normalized": {
+        "correct": 146,
+        "total": 150
+      }
+    },
+    "missingFields": {
+      "exact": {
+        "correct": 22,
+        "total": 25
+      },
+      "precision": 0.8571428571428571,
+      "recall": 1,
+      "f1": 0.923076923076923
+    },
+    "urgency": {
+      "correct": 24,
+      "total": 25,
+      "underTriaged": 1
+    },
+    "category": {
+      "correct": 25,
+      "total": 25
+    },
+    "confusion": {
+      "urgency": {
+        "normal -> low": 1
+      },
+      "category": {}
+    },
+    "usage": {
+      "inputTokens": 42986,
+      "outputTokens": 26096
+    },
+    "totalLatencyMs": 331187
+  },
+  "failures": [
+    {
+      "documentId": "health-17-physio-no-amount",
+      "field": "dateOfLoss",
+      "category": "missed-field",
+      "severity": "hard",
+      "expected": "2025-06-18",
+      "actual": "null",
+      "note": "Pre-approval request rather than a claim. The prescription date is the only date in the document and stands in for the loss date - a judgement call, recorded here so the label is reproducible."
+    },
+    {
+      "documentId": "health-17-physio-no-amount",
+      "field": "missingFields",
+      "category": "spurious-missing-field",
+      "severity": "hard",
+      "expected": "amount, currency",
+      "actual": "dateOfLoss, amount, currency",
+      "note": "Pre-approval request rather than a claim. The prescription date is the only date in the document and stands in for the loss date - a judgement call, recorded here so the label is reproducible."
+    },
+    {
+      "documentId": "health-17-physio-no-amount",
+      "field": "urgency",
+      "category": "urgency-mismatch",
+      "severity": "hard",
+      "expected": "normal",
+      "actual": "low",
+      "note": "Pre-approval request rather than a claim. The prescription date is the only date in the document and stands in for the loss date - a judgement call, recorded here so the label is reproducible."
+    },
+    {
+      "documentId": "health-20-workplace-fall",
+      "field": "claimantName",
+      "category": "name-mismatch",
+      "severity": "hard",
+      "expected": "Goran Petrović",
+      "actual": "Petrović Bau AG",
+      "note": "The nastiest name distractor in the set: the HR contact Vesna Petrović shares a surname with the injured employee, and the employer is Petrović Bau AG. Also tests claimType - a UVG workplace accident is health, not liability."
+    },
+    {
+      "documentId": "property-08-water-ongoing",
+      "field": "dateOfLoss",
+      "category": "missed-field",
+      "severity": "hard",
+      "expected": "2025-07-03",
+      "actual": "null",
+      "note": "High on the ongoing-damage limb: water is still escaping and the flat is uninhabitable. Tests that a null amount does not drag urgency down. With no amount stated there is no currency either, so both are missing."
+    },
+    {
+      "documentId": "property-08-water-ongoing",
+      "field": "missingFields",
+      "category": "spurious-missing-field",
+      "severity": "hard",
+      "expected": "amount, currency",
+      "actual": "dateOfLoss, amount, currency",
+      "note": "High on the ongoing-damage limb: water is still escaping and the flat is uninhabitable. Tests that a null amount does not drag urgency down. With no amount stated there is no currency either, so both are missing."
+    },
+    {
+      "documentId": "property-12-hail-roof",
+      "field": "claimantName",
+      "category": "missed-field",
+      "severity": "hard",
+      "expected": "Ursula Hofer",
+      "actual": "null",
+      "note": "Two hard calls. 03/04/2025 is ambiguous (3 April vs 4 March) so the date is null. And hail has no category of its own, so the correct answer is \"other\" - the tempting wrong answer is property-water, which the document rules out by saying the roof is watertight and there was no ingress."
+    },
+    {
+      "documentId": "property-12-hail-roof",
+      "field": "missingFields",
+      "category": "spurious-missing-field",
+      "severity": "hard",
+      "expected": "dateOfLoss",
+      "actual": "claimantName, dateOfLoss",
+      "note": "Two hard calls. 03/04/2025 is ambiguous (3 April vs 4 March) so the date is null. And hail has no category of its own, so the correct answer is \"other\" - the tempting wrong answer is property-water, which the document rules out by saying the roof is watertight and there was no ingress."
+    }
+  ],
+  "documents": [
+    {
+      "id": "health-15-hospital-invoice",
+      "summary": "[NORMAL] | health-treatment | Ingrid Baumann | policy KV-2024-556677 | CHF 1'840.00 | loss 2025-05-14 -> Verify coverage under policy KV-2024-556677, apply the CHF 300 franchise/self-behalt, and process payment of the remaining amount for invoice RE-2025-118934 from Kantonsspital Aarau dated 14.05.2025.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1758,
+        "outputTokens": 1304
+      },
+      "latencyMs": 18076
+    },
+    {
+      "id": "health-16-ski-accident",
+      "summary": "[HIGH] | health-accident | Julia Meier | policy UV-2023-889100 | CHF 6'700.00 | loss 2025-02-08 -> Register the claim and confirm coverage under policy UV-2023-889100, validate and process the attached rescue and hospital invoices totaling CHF 6,700, and request the medical report and the work incapacity certificate to handle any wage loss benefits.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1683,
+        "outputTokens": 872
+      },
+      "latencyMs": 13341
+    },
+    {
+      "id": "health-17-physio-no-amount",
+      "summary": "[LOW] | health-treatment | Reto Bühler | policy KV-2022-443322 | amount unknown | loss date unknown | missing: dateOfLoss, amount, currency -> Contact the claimant to request the planned treatment start date (use as date of loss), an estimated total amount and currency, and obtain a copy of the prescription plus the physiotherapy provider’s details to issue the pre-authorization.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1663,
+        "outputTokens": 989
+      },
+      "latencyMs": 14756
+    },
+    {
+      "id": "health-18-dental-filling",
+      "summary": "[LOW] | health-treatment | Anna Schweizer | policy KV-2025-771234 | CHF 420.00 | loss 2025-07-01 -> Process reimbursement for CHF 420 under policy KV-2025-771234 to the bank account on file after verifying the attached receipt and dental treatment coverage/benefit limits.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1607,
+        "outputTokens": 849
+      },
+      "latencyMs": 13526
+    },
+    {
+      "id": "health-19-month-only",
+      "summary": "[NORMAL] | health-treatment | Martin Frick | policy KV-2021-665544 | CHF 2'150.00 | loss date unknown | missing: dateOfLoss -> Contact the claimant to obtain the missing dateOfLoss (the date of the first ENT consultation in March 2025) and request copies of all related invoices if not already provided.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1659,
+        "outputTokens": 1099
+      },
+      "latencyMs": 12628
+    },
+    {
+      "id": "health-20-workplace-fall",
+      "summary": "[HIGH] | health-accident | Petrović Bau AG | policy UV-2020-334455 | CHF 12'000.00 | loss 2025-04-25 -> Open a UVG accident case and urgently obtain the ambulance and hospital reports (diagnosis, treatment plan, incapacity certificate), then coordinate cost coverage and benefits with SUVA and the employer contact Vesna Petrović.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1733,
+        "outputTokens": 1110
+      },
+      "latencyMs": 13978
+    },
+    {
+      "id": "liability-21-dog-bite",
+      "summary": "[HIGH] | liability-third-party | Claudia Rieder | policy HP-2019-223344 | CHF 3'400.00 | loss 2025-05-30 -> Contact the claimant to obtain the third party’s contact details, copies of the medical bill and jacket damage invoice, and confirm the incident circumstances and any ongoing treatment.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1778,
+        "outputTokens": 974
+      },
+      "latencyMs": 11404
+    },
+    {
+      "id": "liability-22-legal-deadline",
+      "summary": "[HIGH] | liability-third-party | Stefan Hauser | policy HP-2021-556611 | CHF 28'000.00 | loss 2025-03-12 -> Obtain a statement, incident report, and any photos from Mr Hauser and his employer, then issue a written liability position to the claimant’s lawyers by 11 April 2025.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1787,
+        "outputTokens": 1101
+      },
+      "latencyMs": 11596
+    },
+    {
+      "id": "liability-23-no-name",
+      "summary": "[NORMAL] | liability-third-party | unnamed claimant | policy HP-2023-990011 | CHF 3'200.00 | loss 2025-06-09 | missing: claimantName -> Contact the insured to obtain the claimantName (full name of the Versicherungsnehmer) and request the missing page 2 of the form to complete the file.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1683,
+        "outputTokens": 1257
+      },
+      "latencyMs": 13575
+    },
+    {
+      "id": "liability-24-currency-unstated",
+      "summary": "[NORMAL] | liability-third-party | Miriam Kohler | policy HP-2022-778899 | ??? 3'200.00 | loss 2025-04-02 | missing: currency -> Contact the claimant to confirm the claim currency and request the landlord’s contact details, a copy of the repair invoice(s), the plumber’s intervention report/invoice, and any photos of the damage and repairs, and ask whether the invoice has already been paid.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1670,
+        "outputTokens": 964
+      },
+      "latencyMs": 11028
+    },
+    {
+      "id": "liability-25-certificate-request",
+      "summary": "[LOW] | liability-third-party | Erik Nussbaumer | policy HP-2018-445566 | amount unknown | loss 2025-02-05 | missing: amount, currency -> Email the claimant a PDF copy of the liability insurance certificate for policy HP-2018-445566 and confirm that no further claim is being made.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1646,
+        "outputTokens": 1010
+      },
+      "latencyMs": 11286
+    },
+    {
+      "id": "motor-01-collision-zurich",
+      "summary": "[NORMAL] | motor-collision | Andrea Vogt | policy CH-MOT-2019-447215 | CHF 12'450.00 | loss 2025-03-14 -> Contact the claimant to confirm the attached repair estimate and arrange repair authorization and deductible handling, and request the other driver’s name, contact details, insurer and licence plate, plus any police/accident report and photos of the damage/scene.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1797,
+        "outputTokens": 1179
+      },
+      "latencyMs": 14273
+    },
+    {
+      "id": "motor-02-parking-bollard",
+      "summary": "[LOW] | motor-collision | Peter Steiner | policy MV-2024-0098331 | CHF 680.00 | loss date unknown | missing: dateOfLoss -> Contact the claimant to confirm and record the date of loss (reported as 06/07/2025) and request any supporting repair estimate and photos of the bumper damage.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1630,
+        "outputTokens": 1238
+      },
+      "latencyMs": 14782
+    },
+    {
+      "id": "motor-03-motorcycle-theft",
+      "summary": "[NORMAL] | motor-theft | Nadia Berger | policy CH-MOT-2021-773104 | CHF 18'900.00 | loss 2025-05-19 -> Verify the theft with Kantonspolizei Basel-Stadt using report 2025/BS/11408 and request from the insured/broker the vehicle registration, purchase invoice, both keys/key codes, proof of ownership/financing, and any available photos or CCTV before proceeding with settlement per policy terms.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1765,
+        "outputTokens": 987
+      },
+      "latencyMs": 12888
+    },
+    {
+      "id": "motor-04-highway-injury",
+      "summary": "[HIGH] | motor-collision | Marc Hodel | policy CH-MOT-2018-115540 | CHF 34'000.00 | loss 2025-04-11 -> Obtain the cantonal police report and medical records from Spital Langenthal and confirm the third-party driver and passenger contact and insurer details.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1783,
+        "outputTokens": 880
+      },
+      "latencyMs": 12692
+    },
+    {
+      "id": "motor-05-missing-policy",
+      "summary": "[NORMAL] | motor-collision | Sandra Küng | policy unknown | CHF 4'200.00 | loss 2025-05-22 | missing: policyNumber -> Obtain the missing policyNumber from Sandra Küng and proceed with setting up the motor collision claim.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1717,
+        "outputTokens": 1039
+      },
+      "latencyMs": 12716
+    },
+    {
+      "id": "motor-06-relative-date",
+      "summary": "[NORMAL] | motor-collision | Thomas Rüegg | policy CH-MOT-2022-330871 | CHF 2'800.00 | loss date unknown | missing: dateOfLoss -> Contact the claimant to obtain the exact date of loss and collect the third party’s details from the note (name, phone, insurer, licence plate) along with the repair estimate from Garage Sprenger and any photos of the damage.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1666,
+        "outputTokens": 1036
+      },
+      "latencyMs": 13734
+    },
+    {
+      "id": "motor-07-accident-abroad-eur",
+      "summary": "[NORMAL] | motor-collision | Lea Frei | policy CH-MOT-2020-661234 | EUR 8'500.00 | loss 2025-02-27 -> Contact the claimant to confirm the vehicle’s current location and German garage contact details, obtain the written repair estimate and towing invoice in EUR plus any photos or police reference, and advise whether we can settle in EUR and how repairs or repatriation will proceed.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1705,
+        "outputTokens": 1317
+      },
+      "latencyMs": 16486
+    },
+    {
+      "id": "property-08-water-ongoing",
+      "summary": "[HIGH] | property-water | Beatrice Lüthi | policy CH-HH-2023-559012 | amount unknown | loss date unknown | missing: dateOfLoss, amount, currency -> Call the claimant immediately to confirm the leak is stopped and arrange emergency plumber and drying/mitigation, and obtain the missing required fields dateOfLoss, amount, and currency, plus brief details of any damage to the downstairs neighbor.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1785,
+        "outputTokens": 882
+      },
+      "latencyMs": 17452
+    },
+    {
+      "id": "property-09-kitchen-fire",
+      "summary": "[HIGH] | property-fire | David Amrein | policy CH-HH-2017-884401 | CHF 62'000.00 | loss 2025-01-18 -> Contact the claimant to arrange an urgent loss adjuster inspection and request the fire brigade incident report, photos of the damage, and initial repair/restoration quotations.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1859,
+        "outputTokens": 872
+      },
+      "latencyMs": 12149
+    },
+    {
+      "id": "property-10-burglary-basel",
+      "summary": "[NORMAL] | property-burglary | Simone Wyss | policy CH-HH-2022-102938 | CHF 7'350.00 | loss 2025-03-29 -> Contact the claimant to obtain the police report (Rapport-Nr. 2025/BS/07731), the detailed itemized list and time-value basis for each stolen item, purchase proofs or photos, photos of the forced door and a repair estimate, and payment details (IBAN).",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1840,
+        "outputTokens": 1161
+      },
+      "latencyMs": 12314
+    },
+    {
+      "id": "property-11-status-enquiry",
+      "summary": "[LOW] | property-water | Rolf Zimmermann | policy CH-HH-2021-447790 | amount unknown | loss 2025-04-08 | missing: amount, currency -> Send the claimant a status update on the water-damage claim and a duplicate claim form, and ask them to confirm the claimed amount and currency if these are not already on file.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1671,
+        "outputTokens": 792
+      },
+      "latencyMs": 13935
+    },
+    {
+      "id": "property-12-hail-roof",
+      "summary": "[NORMAL] | other | unnamed claimant | policy CH-GEB-2019-772211 | CHF 9'800.00 | loss date unknown | missing: claimantName, dateOfLoss -> Contact the insured to confirm the claimant name and the exact date of loss (stated as 03/04/2025 in the letter) and request the roofer’s written estimate and any photos of the hail damage.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1678,
+        "outputTokens": 1218
+      },
+      "latencyMs": 12497
+    },
+    {
+      "id": "property-13-pipe-burst",
+      "summary": "[NORMAL] | property-water | Kurt Egli | policy CH-GEB-2020-118833 | amount unknown | loss date unknown | missing: dateOfLoss, amount, currency -> Contact Kurt Egli to obtain the exact date of loss (early June 2025), a preliminary amount estimate and currency, and arrange a drying company inspection with photos and the plumber’s invoice.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1719,
+        "outputTokens": 995
+      },
+      "latencyMs": 10585
+    },
+    {
+      "id": "property-14-attempted-break-in",
+      "summary": "[LOW] | property-burglary | Anita Stalder | policy CH-HH-2024-330099 | CHF 340.00 | loss 2025-06-15 -> Verify coverage under policy CH-HH-2024-330099 and request the police report/reference number, the glazier’s written quote or invoice, and photos of the damaged window and lock, then proceed with settlement for CHF 340 if covered.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1704,
+        "outputTokens": 971
+      },
+      "latencyMs": 9490
+    }
+  ]
+}

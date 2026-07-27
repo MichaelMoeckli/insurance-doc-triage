@@ -1,0 +1,468 @@
+{
+  "promptVersion": "v2",
+  "promptChangelog": "Targets name-mismatch: the claimantName schema description said \"policyholder or claimant\", which are opposite parties on a liability claim. Now defines it as the policyholder explicitly. Single-string change; instructions and all other field descriptions identical to v1.",
+  "model": "gpt-4.1-mini",
+  "timestamp": "2026-07-27T21:38:21.073Z",
+  "metrics": {
+    "documents": 25,
+    "completed": 25,
+    "fields": {
+      "policyNumber": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "claimantName": {
+        "strict": {
+          "correct": 24,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 24,
+          "total": 25
+        }
+      },
+      "dateOfLoss": {
+        "strict": {
+          "correct": 23,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 23,
+          "total": 25
+        }
+      },
+      "claimType": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "amount": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      },
+      "currency": {
+        "strict": {
+          "correct": 25,
+          "total": 25
+        },
+        "normalized": {
+          "correct": 25,
+          "total": 25
+        }
+      }
+    },
+    "overall": {
+      "strict": {
+        "correct": 147,
+        "total": 150
+      },
+      "normalized": {
+        "correct": 147,
+        "total": 150
+      }
+    },
+    "missingFields": {
+      "exact": {
+        "correct": 23,
+        "total": 25
+      },
+      "precision": 1,
+      "recall": 0.8888888888888888,
+      "f1": 0.9411764705882353
+    },
+    "urgency": {
+      "correct": 21,
+      "total": 25,
+      "underTriaged": 4
+    },
+    "category": {
+      "correct": 23,
+      "total": 25
+    },
+    "confusion": {
+      "urgency": {
+        "high -> normal": 3,
+        "normal -> low": 1
+      },
+      "category": {
+        "motor-collision -> health-accident": 1,
+        "other -> property-water": 1
+      }
+    },
+    "usage": {
+      "inputTokens": 43113,
+      "outputTokens": 5748
+    },
+    "totalLatencyMs": 119736
+  },
+  "failures": [
+    {
+      "documentId": "health-16-ski-accident",
+      "field": "urgency",
+      "category": "urgency-mismatch",
+      "severity": "hard",
+      "expected": "high",
+      "actual": "normal",
+      "note": "High on the injury limb. The surgery date (9 February) is a distractor for the accident date. \"so far\" signals an open-ended total, but a single stated figure is still extractable."
+    },
+    {
+      "documentId": "health-17-physio-no-amount",
+      "field": "urgency",
+      "category": "urgency-mismatch",
+      "severity": "hard",
+      "expected": "normal",
+      "actual": "low",
+      "note": "Pre-approval request rather than a claim. The prescription date is the only date in the document and stands in for the loss date - a judgement call, recorded here so the label is reproducible."
+    },
+    {
+      "documentId": "liability-21-dog-bite",
+      "field": "urgency",
+      "category": "urgency-mismatch",
+      "severity": "hard",
+      "expected": "high",
+      "actual": "normal",
+      "note": "High on the injury limb - the injured person is a third party, which the rubric does not distinguish. The name trap is structural to liability claims: the claimant is the policyholder (Claudia Rieder), not the injured neighbour (Erika Sommer)."
+    },
+    {
+      "documentId": "liability-22-legal-deadline",
+      "field": "claimantName",
+      "category": "name-mismatch",
+      "severity": "hard",
+      "expected": "Stefan Hauser",
+      "actual": "Bertschi Logistik AG",
+      "note": "High on the deadline limb with no injury and an amount under 50k - the only document in the set where the deadline alone carries the urgency. Three competing names (insured, claimant company, opposing lawyer) and a law-firm reference posing as an identifier."
+    },
+    {
+      "documentId": "liability-22-legal-deadline",
+      "field": "urgency",
+      "category": "urgency-mismatch",
+      "severity": "hard",
+      "expected": "high",
+      "actual": "normal",
+      "note": "High on the deadline limb with no injury and an amount under 50k - the only document in the set where the deadline alone carries the urgency. Three competing names (insured, claimant company, opposing lawyer) and a law-firm reference posing as an identifier."
+    },
+    {
+      "documentId": "motor-02-parking-bollard",
+      "field": "dateOfLoss",
+      "category": "hallucinated-field",
+      "severity": "hard",
+      "expected": "null",
+      "actual": "2025-07-06",
+      "note": "06/07/2025 is genuinely ambiguous between 6 July and 7 June in a Swiss/English mixed context, so the date must be null. Low urgency: no injury, nothing ongoing, amount under CHF 1,000."
+    },
+    {
+      "documentId": "motor-02-parking-bollard",
+      "field": "missingFields",
+      "category": "missed-missing-field",
+      "severity": "hard",
+      "expected": "dateOfLoss",
+      "actual": "(empty)",
+      "note": "06/07/2025 is genuinely ambiguous between 6 July and 7 June in a Swiss/English mixed context, so the date must be null. Low urgency: no injury, nothing ongoing, amount under CHF 1,000."
+    },
+    {
+      "documentId": "motor-04-highway-injury",
+      "field": "category",
+      "category": "category-mismatch",
+      "severity": "hard",
+      "expected": "motor-collision",
+      "actual": "health-accident",
+      "note": "High on the injury limb of the rubric, not the amount limb (CHF 34,000 is under the 50k threshold). Distractors: the internal file reference CLM-2025-04-0771 is not the policy number, and the adjuster R. Odermatt is not the claimant."
+    },
+    {
+      "documentId": "property-12-hail-roof",
+      "field": "dateOfLoss",
+      "category": "hallucinated-field",
+      "severity": "hard",
+      "expected": "null",
+      "actual": "2025-04-03",
+      "note": "Two hard calls. 03/04/2025 is ambiguous (3 April vs 4 March) so the date is null. And hail has no category of its own, so the correct answer is \"other\" - the tempting wrong answer is property-water, which the document rules out by saying the roof is watertight and there was no ingress."
+    },
+    {
+      "documentId": "property-12-hail-roof",
+      "field": "missingFields",
+      "category": "missed-missing-field",
+      "severity": "hard",
+      "expected": "dateOfLoss",
+      "actual": "(empty)",
+      "note": "Two hard calls. 03/04/2025 is ambiguous (3 April vs 4 March) so the date is null. And hail has no category of its own, so the correct answer is \"other\" - the tempting wrong answer is property-water, which the document rules out by saying the roof is watertight and there was no ingress."
+    },
+    {
+      "documentId": "property-12-hail-roof",
+      "field": "category",
+      "category": "category-mismatch",
+      "severity": "hard",
+      "expected": "other",
+      "actual": "property-water",
+      "note": "Two hard calls. 03/04/2025 is ambiguous (3 April vs 4 March) so the date is null. And hail has no category of its own, so the correct answer is \"other\" - the tempting wrong answer is property-water, which the document rules out by saying the roof is watertight and there was no ingress."
+    }
+  ],
+  "documents": [
+    {
+      "id": "health-15-hospital-invoice",
+      "summary": "[NORMAL] | health-treatment | Ingrid Baumann | policy KV-2024-556677 | CHF 1'840.00 | loss 2025-05-14 -> Process the claim for the ambulatory treatment including gastroscopy for Ingrid Baumann on 14.05.2025 and verify the billing details.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1762,
+        "outputTokens": 268
+      },
+      "latencyMs": 4984
+    },
+    {
+      "id": "health-16-ski-accident",
+      "summary": "[NORMAL] | health-accident | Julia Meier | policy UV-2023-889100 | CHF 6'700.00 | loss 2025-02-08 -> Process the claim for the skiing accident and verify the attached invoices and medical reports.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1687,
+        "outputTokens": 254
+      },
+      "latencyMs": 5507
+    },
+    {
+      "id": "health-17-physio-no-amount",
+      "summary": "[LOW] | health-treatment | Reto Bühler | policy KV-2022-443322 | amount unknown | loss 2025-06-18 | missing: amount, currency -> Request the claimant to provide the estimated or actual cost amount and currency for the physiotherapy sessions once available.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1669,
+        "outputTokens": 199
+      },
+      "latencyMs": 5889
+    },
+    {
+      "id": "health-18-dental-filling",
+      "summary": "[LOW] | health-treatment | Anna Schweizer | policy KV-2025-771234 | CHF 420.00 | loss 2025-07-01 -> Process the reimbursement claim for the dental filling and verify the attached receipt and payment details.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1611,
+        "outputTokens": 215
+      },
+      "latencyMs": 4792
+    },
+    {
+      "id": "health-19-month-only",
+      "summary": "[NORMAL] | health-treatment | Martin Frick | policy KV-2021-665544 | CHF 2'150.00 | loss date unknown | missing: dateOfLoss -> Request the exact date of the first consultation from the claimant to complete the claim details.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1663,
+        "outputTokens": 205
+      },
+      "latencyMs": 5735
+    },
+    {
+      "id": "health-20-workplace-fall",
+      "summary": "[HIGH] | health-accident | Goran Petrović | policy UV-2020-334455 | CHF 12'000.00 | loss 2025-04-25 -> Assign this claim immediately to a health accident specialist for urgent processing and follow-up on the injured employee's medical status.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1736,
+        "outputTokens": 262
+      },
+      "latencyMs": 7900
+    },
+    {
+      "id": "liability-21-dog-bite",
+      "summary": "[NORMAL] | liability-third-party | Claudia Rieder | policy HP-2019-223344 | CHF 3'400.00 | loss 2025-05-30 -> Assign this liability claim to a handler to process the third-party injury and property damage.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1782,
+        "outputTokens": 222
+      },
+      "latencyMs": 5514
+    },
+    {
+      "id": "liability-22-legal-deadline",
+      "summary": "[NORMAL] | liability-third-party | Bertschi Logistik AG | policy HP-2021-556611 | CHF 28'000.00 | loss 2025-03-12 -> Respond to the claimant's request for a written position on liability by the deadline of 11 April 2025, confirming receipt and requesting any additional details if needed.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1794,
+        "outputTokens": 277
+      },
+      "latencyMs": 4843
+    },
+    {
+      "id": "liability-23-no-name",
+      "summary": "[NORMAL] | liability-third-party | unnamed claimant | policy HP-2023-990011 | CHF 3'200.00 | loss 2025-06-09 | missing: claimantName -> Request the claimant's name and the missing page 2 of the form to complete the claim file.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1687,
+        "outputTokens": 221
+      },
+      "latencyMs": 3634
+    },
+    {
+      "id": "liability-24-currency-unstated",
+      "summary": "[NORMAL] | liability-third-party | Miriam Kohler | policy HP-2022-778899 | ??? 3'200.00 | loss 2025-04-02 | missing: currency -> Request the claimant to specify the currency of the claimed amount.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1674,
+        "outputTokens": 216
+      },
+      "latencyMs": 5818
+    },
+    {
+      "id": "liability-25-certificate-request",
+      "summary": "[LOW] | liability-third-party | Erik Nussbaumer | policy HP-2018-445566 | amount unknown | loss 2025-02-05 | missing: amount, currency -> Send the claimant a PDF copy of the liability certificate as requested and confirm no further claim is being made.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1650,
+        "outputTokens": 205
+      },
+      "latencyMs": 3551
+    },
+    {
+      "id": "motor-01-collision-zurich",
+      "summary": "[NORMAL] | motor-collision | Andrea Vogt | policy CH-MOT-2019-447215 | CHF 12'450.00 | loss 2025-03-14 -> Assign the claim to a motor collision handler and proceed with processing based on the provided estimate and details.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1801,
+        "outputTokens": 245
+      },
+      "latencyMs": 5708
+    },
+    {
+      "id": "motor-02-parking-bollard",
+      "summary": "[LOW] | motor-collision | Peter Steiner | policy MV-2024-0098331 | CHF 680.00 | loss 2025-07-06 -> Process the claim for the minor motor collision damage as all required information is provided.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1644,
+        "outputTokens": 221
+      },
+      "latencyMs": 5304
+    },
+    {
+      "id": "motor-03-motorcycle-theft",
+      "summary": "[NORMAL] | motor-theft | Nadia Berger | policy CH-MOT-2021-773104 | CHF 18'900.00 | loss 2025-05-19 -> Assign the claim to a motor-theft specialist for processing and verify the police report details if needed.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1769,
+        "outputTokens": 270
+      },
+      "latencyMs": 4745
+    },
+    {
+      "id": "motor-04-highway-injury",
+      "summary": "[HIGH] | health-accident | Marc Hodel | policy CH-MOT-2018-115540 | CHF 34'000.00 | loss 2025-04-11 -> Immediately escalate this claim to the injury desk and ensure all medical reports and police report are obtained for further processing.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1787,
+        "outputTokens": 276
+      },
+      "latencyMs": 4038
+    },
+    {
+      "id": "motor-05-missing-policy",
+      "summary": "[NORMAL] | motor-collision | Sandra Küng | policy unknown | CHF 4'200.00 | loss 2025-05-22 | missing: policyNumber -> Request the policy number from the claimant to complete the claim file.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1721,
+        "outputTokens": 218
+      },
+      "latencyMs": 4224
+    },
+    {
+      "id": "motor-06-relative-date",
+      "summary": "[NORMAL] | motor-collision | Thomas Rüegg | policy CH-MOT-2022-330871 | CHF 2'800.00 | loss date unknown | missing: dateOfLoss -> Request the date of loss from the claimant to complete the claim details.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1670,
+        "outputTokens": 205
+      },
+      "latencyMs": 3339
+    },
+    {
+      "id": "motor-07-accident-abroad-eur",
+      "summary": "[NORMAL] | motor-collision | Lea Frei | policy CH-MOT-2020-661234 | EUR 8'500.00 | loss 2025-02-27 -> Convert the estimated repair cost from euros to Swiss francs and proceed with processing the motor collision claim.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1709,
+        "outputTokens": 249
+      },
+      "latencyMs": 5499
+    },
+    {
+      "id": "property-08-water-ongoing",
+      "summary": "[HIGH] | property-water | Beatrice Lüthi | policy CH-HH-2023-559012 | amount unknown | loss 2025-07-03 | missing: amount, currency -> Contact the claimant immediately to confirm the estimated damage amount and currency, and verify if there are any injuries or further ongoing damage.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1791,
+        "outputTokens": 209
+      },
+      "latencyMs": 3909
+    },
+    {
+      "id": "property-09-kitchen-fire",
+      "summary": "[HIGH] | property-fire | David Amrein | policy CH-HH-2017-884401 | CHF 62'000.00 | loss 2025-01-18 -> Assign this claim to a property-fire specialist immediately for urgent processing due to the high claimed amount and fire damage.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1863,
+        "outputTokens": 200
+      },
+      "latencyMs": 4737
+    },
+    {
+      "id": "property-10-burglary-basel",
+      "summary": "[NORMAL] | property-burglary | Simone Wyss | policy CH-HH-2022-102938 | CHF 7'350.00 | loss 2025-03-29 -> Assign the claim to a property burglary handler for further processing.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1844,
+        "outputTokens": 213
+      },
+      "latencyMs": 5096
+    },
+    {
+      "id": "property-11-status-enquiry",
+      "summary": "[LOW] | property-water | Rolf Zimmermann | policy CH-HH-2021-447790 | amount unknown | loss 2025-04-08 | missing: amount, currency -> Contact the claimant to provide the current status of the water damage claim and send a duplicate copy of the claim form; also request the claimed amount and currency if not already known.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1675,
+        "outputTokens": 203
+      },
+      "latencyMs": 3500
+    },
+    {
+      "id": "property-12-hail-roof",
+      "summary": "[NORMAL] | property-water | Ursula Hofer | policy CH-GEB-2019-772211 | CHF 9'800.00 | loss 2025-04-03 -> Assign the claim to a property damage handler and verify the repair estimate and roof condition.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1693,
+        "outputTokens": 246
+      },
+      "latencyMs": 3629
+    },
+    {
+      "id": "property-13-pipe-burst",
+      "summary": "[NORMAL] | property-water | Kurt Egli | policy CH-GEB-2020-118833 | amount unknown | loss date unknown | missing: dateOfLoss, amount, currency -> Request the date of loss, estimated claim amount, and currency from the claimant to proceed with the assessment.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1723,
+        "outputTokens": 208
+      },
+      "latencyMs": 4011
+    },
+    {
+      "id": "property-14-attempted-break-in",
+      "summary": "[LOW] | property-burglary | Anita Stalder | policy CH-HH-2024-330099 | CHF 340.00 | loss 2025-06-15 -> Process the claim for the attempted break-in with the provided details and amount of CHF 340.",
+      "completed": true,
+      "usage": {
+        "inputTokens": 1708,
+        "outputTokens": 241
+      },
+      "latencyMs": 3830
+    }
+  ]
+}

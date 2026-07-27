@@ -16,6 +16,7 @@ measurable instead of anecdotal.
 | **Headline** | **99.3%** field accuracy (149/150) and **100%** urgency accuracy with zero under-triage, on `gpt-5-mini`, at ~$0.002 and ~10s per document. |
 | **The caveat, up front** | Most of the v1 → v2 delta is **noise**, and the run proves it — four metrics moved that a one-string prompt change cannot touch. At 25 documents one flipped answer is 0.67pp. [The analysis is the deliverable, not the number.](#an-honest-caveat-on-these-numbers) |
 | **What's interesting** | The eval harness was built *before* the prompt was tuned, so v2 could be shown to have fixed its target, introduced an equal regression, and left the rest to chance — which turned a prompt question into a [data-modelling one](#what-v2-actually-did). |
+| **Model choice** | **The frontier model is the wrong buy.** Same prompt on `gpt-5`: 6.4× the cost, zero accuracy gained. On `gpt-4.1-mini`: half the price, and it under-triages two injuries and a legal deadline. [Why the middle model wins.](#what-the-model-comparison-found) |
 | **Stack** | TypeScript, OpenAI Responses API with strict Structured Outputs, hand-written JSON Schemas, a versioned prompt registry, and a one-page Next.js demo over the same pipeline. |
 | **Check it in 30 seconds** | `npm install && npm run eval:validate` — validates all 25 document/label pairs. No API key, no model calls, no spend. |
 
@@ -136,7 +137,7 @@ data/docs/*.txt                                       data/labels/*.json
         |                                                     |
         +--------------------> [ EVAL ] <---------------------+
                                   |
-                    results.md + results/run-<version>.json
+              results.md + results/run-<version>--<model>.json
 ```
 
 Triage is a second call rather than a bigger schema on the first one. It costs roughly
@@ -161,7 +162,8 @@ src/
 app/                    one-page Next.js demo; a thin shell over the same pipeline
 data/docs/              25 synthetic documents
 data/labels/            25 ground-truth labels
-results/                run records, committed - they drive the comparison table
+results/                run records, one per (prompt version, model), committed -
+                        they drive the comparison table
 ```
 
 ## How to run
@@ -224,7 +226,8 @@ npm run report
 Regenerates `results.md` from the run records already in `results/`. No API calls, no
 spend — for when the report *renderer* changed and the report needs to catch up. Re-running
 a paid eval to pick up a formatting change would also silently replace the measurements
-this README analyses.
+this README analyses. `--version` and `--model` pick which run the report treats as
+current; every record on disk appears in the comparison table regardless.
 
 ```bash
 npm test
@@ -261,9 +264,9 @@ why the `web:*` scripts pass `--webpack`.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | — | Required, except for `--validate-only`. |
-| `OPENAI_MODEL` | `gpt-5-mini` | Any Structured-Outputs-capable model. |
+| `OPENAI_MODEL` | `gpt-5-mini` | Any Structured-Outputs-capable model. One of the two eval axes. |
 | `OPENAI_REASONING_EFFORT` | `low` | gpt-5 / o-series only. |
-| `PROMPT_VERSION` | `v1` | Selects the prompt set. The knob for the eval loop. |
+| `PROMPT_VERSION` | `v1` | Selects the prompt set. The other eval axis. |
 
 All four can be set in `.env`, which is the portable way to switch prompt versions on
 Windows — `PROMPT_VERSION=v2 npm run eval` is POSIX shell syntax and will not work in
@@ -472,8 +475,9 @@ the rest by spreading `v1` rather than copying it, so the two cannot drift apart
 a shared schema in place would silently change what every earlier version had been
 measured on, which would make the comparison table a lie rather than a record.
 
-Each run writes `results/run-<version>.json`, and the report renders every run record it
-finds side by side with per-metric deltas — so the comparison table fills itself in.
+Each run writes `results/run-<version>--<model>.json`, and the report renders every run
+record it finds side by side with per-metric deltas — so the comparison table fills itself
+in.
 
 Two cautions the v1 → v2 run earned the hard way. Changing more than one thing per
 version makes the delta unattributable, which is why the recipe insists on one. And a
@@ -481,11 +485,83 @@ delta smaller than a couple of documents is not evidence of anything at this dat
 size — check the per-field rows and the failure log before believing a headline
 improvement.
 
+### Comparing models
+
+A run record is keyed by the **pair** (prompt version, model), because those are the two
+things that can change underneath a number. Holding one fixed and varying the other is
+the only way to read the result:
+
+```bash
+npx tsx src/cli/eval.ts --concurrency 8
+```
+
+with `PROMPT_VERSION=v2` and `OPENAI_MODEL=gpt-5` in `.env` writes
+`results/run-v2--gpt-5.json` beside the existing `run-v2--gpt-5-mini.json` and adds a
+column. Nothing is overwritten, and `src/openai/client.ts` already switches between
+`reasoning.effort` and `temperature` on the model id, so no code changes.
+
+When run records span more than one model the report labels each column with both halves
+of the key and prints a caution, because a delta between two columns that differ in
+prompt *and* model is not attributable to either.
+
+### What the model comparison found
+
+**The frontier model is the wrong buy for this task, and nothing but an eval could have
+told me that.** `v2` ran against three models with the prompt text, the schemas and the
+dataset byte-identical and `OPENAI_REASONING_EFFORT` fixed at `low`, so the model is the
+only thing that changed.
+
+| `v2` on | Field (norm.) | Urgency | Under-triaged | Category | Hard failures | Cost / run | Latency / doc |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `gpt-5-mini` | **99.3%** | **100.0%** | **0** | 96.0% | **2** | $0.0495 | 10.5 s |
+| `gpt-5` | 97.3% | 96.0% | 1 | 100.0% | 8 | $0.3147 | 13.2 s |
+| `gpt-4.1-mini` | 98.0% | 84.0% | 4 | 92.0% | 11 | $0.0264 | 4.8 s |
+
+**`gpt-5` costs 6.4× more, runs 26% slower, and buys nothing.** It ties or loses on every
+metric except category, and it produced this project's first under-triage. I won't claim
+it extracts *worse* — a 2pp field gap is three cells out of 150, and this dataset cannot
+resolve that. I will claim what the table does support: there is no measurement here that
+justifies paying six times as much, and the default assumption that the biggest model is
+the safe choice is simply false on this workload. `gpt-5-mini` is the recommendation, and
+it is not close.
+
+**`gpt-4.1-mini` is disqualified, and not by its field accuracy.** At 98.0% it extracts
+about as well as anything, at half the cost and half the latency — and then under-triages
+4 of 25 documents. Three of those are `high` scored as `normal`: a ski accident with an
+injury, a dog bite with an injury, and the lawyer's letter carrying a legal deadline.
+Those are the rubric's own three `high` triggers. That is not a calibration wobble, it is
+a model failing to apply a rubric it was handed in full, and 16pp across 4 documents is
+far too large to blame on sampling. For a product whose entire job is to stop an injury
+sitting in a queue, cheap and fast is worth exactly nothing.
+
+**The `claimantName` question is settled — the pessimistic answer was right.** `gpt-5` gets
+`liability-22` right, like `gpt-5-mini`, so v2's precise wording does work on a capable
+model. But `gpt-5` also returns `Petrović Bau AG` on `health-20`, exactly as `gpt-5-mini`
+does. A stronger model does not rescue it, and would not be expected to: on a UVG
+workplace-accident policy the policyholder *is* the employer, so the more faithfully a
+model follows v2's instruction the more certainly it returns the company rather than the
+injured employee. That confirms the conclusion reached from the v1 → v2 run — this is a
+**modelling** problem, not a capability ceiling, and no prompt or model change fixes it.
+The fix is two fields, or a per-`claimType` rule, and it is a discovery question.
+`gpt-4.1-mini` fails `liability-22` too, so it is the only model here that v2's wording
+does not reach at all.
+
+None of this escapes the sample size, and it does not need to. At 25 documents one flipped
+answer is 0.67pp, which is exactly why the recommendation rests on the cost column and the
+under-triage column rather than on field accuracy: a 6.4× price difference and two missed
+injuries are not artefacts 25 documents can manufacture. The field-accuracy column is the
+weakest evidence in the table and is doing none of the work.
+
 ## Failure analysis
 
-Across both runs only four of these categories ever fired — `missed-field` (2),
-`spurious-missing-field` (2) and `name-mismatch` (1) on v1; `name-mismatch` (1) and
-`category-mismatch` (1) on v2. The taxonomy in `src/eval/taxonomy.ts` is built so that
+Across the two `gpt-5-mini` runs only four of these categories ever fired —
+`missed-field` (2), `spurious-missing-field` (2) and `name-mismatch` (1) on v1;
+`name-mismatch` (1) and `category-mismatch` (1) on v2. The model comparison took that to
+seven: `urgency-mismatch` appeared on `gpt-5` and four times on `gpt-4.1-mini`, and
+`hallucinated-field` and `missed-missing-field` fired only on `gpt-4.1-mini` — the two
+categories that say a model is inventing values and failing to notice it. A taxonomy wide
+enough to have those buckets waiting is the reason swapping the model produced a diagnosis
+rather than just a lower number. The taxonomy in `src/eval/taxonomy.ts` is built so that
 each category maps to a different *action*, not just a different symptom, which is what
 let five v1 records resolve to two causes — and what made the v2 regression legible as a
 regression rather than as a slightly different number:

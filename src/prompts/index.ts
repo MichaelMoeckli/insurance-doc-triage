@@ -3,9 +3,9 @@
  *
  * The eval loop this project is built around is: run a version, read the failure
  * taxonomy in results.md, make *one* targeted change, register it as a new version,
- * re-run. Every run is stamped with its version and written to
- * `results/run-<version>.json`, and the report renders whatever versions it finds side
- * by side - so the comparison table appears the moment a second version has run.
+ * re-run. Every run is stamped with its version and its model and written to
+ * `results/run-<version>--<model>.json`, and the report renders whatever runs it finds
+ * side by side - so the comparison table appears the moment a second run exists.
  *
  * To add v2:
  *   1. cp src/prompts/v1.ts src/prompts/v2.ts, rename the export to `v2`, set
