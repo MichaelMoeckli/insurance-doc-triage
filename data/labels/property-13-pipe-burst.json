@@ -8,5 +8,6 @@
   "missingFields": ["dateOfLoss", "amount", "currency"],
   "urgency": "normal",
   "category": "property-water",
+  "language": "de",
   "notes": "Three of the five required fields are unresolvable. \"Anfang Juni\" gives a month but no day. Water damage that is contained and already repaired stays normal - contrast with property-08, where it is still running."
 }

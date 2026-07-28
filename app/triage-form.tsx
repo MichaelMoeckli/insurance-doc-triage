@@ -89,7 +89,7 @@ export function TriageForm({ sample, sampleName }: Props) {
 }
 
 function Result({ result }: { result: TriageResult }) {
-  const { extraction, completeness, triage, summary, meta } = result;
+  const { extraction, completeness, grounding, triage, summary, meta } = result;
 
   return (
     <>
@@ -147,6 +147,55 @@ function Result({ result }: { result: TriageResult }) {
           against the model&apos;s own <code>missingFields</code> is what makes a
           disagreement visible - and a non-empty disagreement list is the signal to route
           this document to a human.
+        </p>
+      </section>
+
+      <section>
+        <h2>Quote grounding</h2>
+        {grounding.checks.length === 0 ? (
+          <p>The model cited no source spans at all.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Cited span</th>
+                <th>In document?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grounding.checks.map((check, index) => (
+                <tr key={`${check.field}-${index}`}>
+                  <td>
+                    <code>{check.field}</code>
+                  </td>
+                  <td className="muted">{check.quote}</td>
+                  <td>
+                    <span className={`badge badge-${check.grounded ? 'ok' : 'bad'}`}>
+                      {check.grounded ? 'found' : 'not found'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <dl>
+          <dt>Filled fields with no span</dt>
+          <dd>
+            <code>{list(grounding.uncited)}</code>
+          </dd>
+          <dt>Spans on null fields</dt>
+          <dd>
+            <code>{list(grounding.quotedButNull)}</code>
+          </dd>
+        </dl>
+        <p className="note">
+          A substring match against the pasted text - no model call, no ground truth. It is
+          the one quality check here that still works on a document nobody has labelled,
+          which is what makes it usable as a routing gate. It proves the span exists, not
+          that it supports the value: <code>CHF 500.00</code> is really in the sample and
+          it is the deductible, not the claim.
         </p>
       </section>
 

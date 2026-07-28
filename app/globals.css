@@ -228,6 +228,19 @@ dd {
   color: var(--low);
 }
 
+/*
+ * Grounding verdicts. Deliberately separate class names from the urgency badges above
+ * even though they share the palette: restyling what `low` urgency looks like should not
+ * silently restyle a fabricated-quote warning.
+ */
+.badge-ok {
+  color: var(--low);
+}
+
+.badge-bad {
+  color: var(--high);
+}
+
 pre {
   margin: 0;
   padding: 0.8rem;

@@ -8,5 +8,6 @@
   "missingFields": [],
   "urgency": "high",
   "category": "health-accident",
+  "language": "en",
   "notes": "High on the injury limb. The surgery date (9 February) is a distractor for the accident date. \"so far\" signals an open-ended total, but a single stated figure is still extractable."
 }

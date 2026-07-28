@@ -27,6 +27,22 @@ export const URGENCIES = ['high', 'normal', 'low'] as const;
 export type Urgency = (typeof URGENCIES)[number];
 
 /**
+ * Document language, as a property of the *label* rather than something detected.
+ *
+ * A Swiss composite insurer's first question is "does it work on German?", and a headline
+ * averaged over both languages cannot answer it. Detecting the language at run time would
+ * put a second fallible component inside the measurement, so it is hand-assigned once, in
+ * the ground truth, where it can be argued with.
+ *
+ * `mixed` means substantive content appears in both languages - a bilingual heading, or
+ * German field labels around English prose. A German company name or street address
+ * inside an otherwise English letter is *not* mixed; every document in the set has Swiss
+ * proper nouns, so counting those would make the category meaningless.
+ */
+export const LANGUAGES = ['de', 'en', 'mixed'] as const;
+export type Language = (typeof LANGUAGES)[number];
+
+/**
  * Triage categories. This vocabulary is closed on purpose: an open-ended `category`
  * string cannot be scored, and "classification accuracy" over free text is not a
  * metric. Extending it is a one-line change here plus new labels.
@@ -121,6 +137,42 @@ export interface CompletenessReport {
 }
 
 // ---------------------------------------------------------------------------
+// Stage 2b - quote grounding (deterministic, no model call)
+// ---------------------------------------------------------------------------
+
+/** One cited span, checked against the document it claims to come from. */
+export interface QuoteCheck {
+  field: ExtractedField;
+  quote: string;
+  /** The span occurs in the source, comparing modulo whitespace and typography. */
+  grounded: boolean;
+}
+
+/**
+ * Whether the model's own evidence holds up.
+ *
+ * `sourceQuotes` asks the model to name the span it took each value from. That claim is
+ * checkable without a model and without the ground truth: either the span is in the
+ * document or it is not. So this runs in the pipeline, not only in the eval - it is a
+ * per-field confidence signal available on every document in production, where no label
+ * exists.
+ *
+ * The three lists are kept apart because they call for opposite responses. A fabricated
+ * quote means the value behind it cannot be trusted at all; an absent quote means the
+ * value is unverifiable but not suspect; a quote on a null field is the model ignoring an
+ * instruction while getting the value right.
+ */
+export interface GroundingReport {
+  checks: QuoteCheck[];
+  /** Cited spans that do not occur in the document. Fabricated evidence. */
+  ungrounded: ExtractedField[];
+  /** Fields with a value and no cited span. Absent evidence. */
+  uncited: ExtractedField[];
+  /** Fields set to null but quoted anyway, which the schema tells the model not to do. */
+  quotedButNull: ExtractedField[];
+}
+
+// ---------------------------------------------------------------------------
 // Stage 3 - triage
 // ---------------------------------------------------------------------------
 
@@ -166,6 +218,7 @@ export interface TriageResult {
   documentId: string;
   extraction: Extraction;
   completeness: CompletenessReport;
+  grounding: GroundingReport;
   triage: Triage;
   /** One-line human-readable summary, for a handler's queue view. */
   summary: string;
@@ -191,6 +244,10 @@ export interface TriageResult {
  *
  * `notes` is not scored. It records *why* a document is hard, so the failure log in
  * `results.md` reads as an analysis rather than a diff dump.
+ *
+ * `language` is not scored either - nothing is asked to predict it. It exists to slice
+ * the results, which is the only way a headline of "99.3%" can answer the question a
+ * Swiss customer asks first.
  */
 export interface GroundTruth {
   policyNumber: string | null;
@@ -202,6 +259,7 @@ export interface GroundTruth {
   missingFields: ExtractedField[];
   urgency: Urgency;
   category: Category;
+  language: Language;
   notes: string;
 }
 

@@ -24,6 +24,8 @@ export const FAILURE_CATEGORIES = [
   'claim-type-mismatch',
   'urgency-mismatch',
   'category-mismatch',
+  'ungrounded-quote',
+  'missing-quote',
   'schema-error',
   'api-error',
 ] as const;
@@ -46,15 +48,29 @@ export const FAILURE_DESCRIPTIONS: Record<FailureCategory, string> = {
   'claim-type-mismatch': 'Wrong line of business.',
   'urgency-mismatch': 'Wrong urgency. Under-triage (predicting lower than the truth) is tracked separately.',
   'category-mismatch': 'Wrong routing category.',
+  'ungrounded-quote':
+    'The model cited a verbatim span that does not occur in the document. Fabricated evidence - the value may still be right, but nothing supports it.',
+  'missing-quote':
+    'A field was filled in without citing the span it came from. The value is unverifiable rather than suspect, and cannot be routed through a grounding gate.',
   'schema-error': 'The model response did not satisfy the JSON schema, or could not be parsed.',
   'api-error': 'The call failed at the transport level after the SDK exhausted its retries.',
 };
 
 /**
- * `hard` failures count against accuracy. `soft` ones do not: the normalised comparison
- * passed and only the surface form was wrong. Keeping them visible rather than
+ * `hard` failures count against the headline accuracy figures. `soft` ones are recorded
+ * and reported but do not move them. Keeping soft failures visible rather than
  * discarding them is the point - a run at 100% normalised accuracy with twelve soft
  * date-format failures is a run whose downstream consumer is about to break.
+ *
+ * Two kinds of failure are soft, for different reasons:
+ *
+ *   - `date-format` and `amount-format`: the normalised comparison passed and only the
+ *     surface form was wrong.
+ *   - `ungrounded-quote` and `missing-quote`: grounding is a *separate axis* from
+ *     correctness, reported under its own metric. A fabricated quote on a correct value
+ *     is not an accuracy defect, and counting it as one would both double-count the
+ *     evidence and silently redefine the "hard failures" row of the comparison table
+ *     against every run record already committed.
  */
 export type FailureSeverity = 'hard' | 'soft';
 

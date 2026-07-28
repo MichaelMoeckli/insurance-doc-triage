@@ -8,5 +8,6 @@
   "missingFields": ["claimantName"],
   "urgency": "normal",
   "category": "liability-third-party",
+  "language": "de",
   "notes": "The only document with no claimant name at all. Currency notation trap: \"Fr. 3'200.—\" is CHF 3200, where the em dash stands for .00 in Swiss usage."
 }

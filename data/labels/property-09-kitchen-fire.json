@@ -8,5 +8,6 @@
   "missingFields": [],
   "urgency": "high",
   "category": "property-fire",
+  "language": "en",
   "notes": "High purely on the amount limb: CHF 62,000 clears the 50k threshold. Everything else points to routine - fire out, no injury, building released - so a model that triages on narrative sentiment rather than the rubric will under-triage this one."
 }

@@ -8,5 +8,6 @@
   "missingFields": [],
   "urgency": "normal",
   "category": "property-burglary",
+  "language": "de",
   "notes": "Two identifier distractors compete with the policy number: the insurer's own claim reference SCH-2025-0341 in the header, and the police report number."
 }

@@ -205,6 +205,22 @@ async function main(): Promise<void> {
   console.error(`Field accuracy (strict):     ${percent(metrics.overall.strict.correct, metrics.overall.strict.total)}`);
   console.error(`Urgency accuracy:            ${percent(metrics.urgency.correct, metrics.urgency.total)} (${metrics.urgency.underTriaged} under-triaged)`);
   console.error(`Category accuracy:           ${percent(metrics.category.correct, metrics.category.total)}`);
+  if (metrics.grounding) {
+    const { grounded, cited } = metrics.grounding;
+    console.error(
+      `Grounded source quotes:      ${percent(grounded.correct, grounded.total)} ` +
+        `(${grounded.correct}/${grounded.total} spans, ${cited.correct}/${cited.total} fields cited)`,
+    );
+  }
+  if (metrics.byLanguage?.length) {
+    // The slice belongs in the run summary, not only in results.md: a language-shaped
+    // regression is the kind you want to see before deciding whether to keep iterating.
+    console.error(
+      `Field accuracy by language:  ${metrics.byLanguage
+        .map((s) => `${s.key} ${percent(s.fields.normalized.correct, s.fields.normalized.total)} (n=${s.documents})`)
+        .join('  ')}`,
+    );
+  }
   console.error(`Hard failures:               ${record.failures.filter((f) => f.severity === 'hard').length}`);
   const cost = estimateCostUsd(MODEL, metrics.usage);
   const completedDocs = Math.max(metrics.completed, 1);

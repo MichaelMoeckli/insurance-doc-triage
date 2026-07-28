@@ -8,5 +8,6 @@
   "missingFields": ["dateOfLoss"],
   "urgency": "normal",
   "category": "motor-collision",
+  "language": "de",
   "notes": "\"Letzten Dienstag\" is relative and the email carries no send date, so the loss date cannot be resolved and must be null. A model that anchors the relative date to today's date will fail here, which is the point."
 }

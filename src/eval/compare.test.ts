@@ -9,9 +9,37 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import type { GroundTruth, TriageResult } from '../types.js';
-import { aggregate, compareDocument, failedDocument } from './compare.js';
+import type { Extraction, GroundTruth, TriageResult } from '../types.js';
+import { aggregate, compareDocument, failedDocument, sliceBy } from './compare.js';
 import { checkCompleteness } from '../pipeline/completeness.js';
+import { checkGrounding } from '../pipeline/grounding.js';
+
+/**
+ * The document the fixture claims to have been extracted from.
+ *
+ * Real text rather than a stub, because grounding is scored by substring match against
+ * it: a fixture whose quotes were not actually in its document would make every test
+ * below run against a permanently ungrounded extraction.
+ */
+const DOCUMENT = [
+  'From: lea.frei@protonmail.ch',
+  'Subject: Accident abroad - policy CH-MOT-2020-661234',
+  '',
+  'I had an accident on 27 February 2025 on the B31 near Freiburg im Breisgau.',
+  'The German garage has issued its estimate in euros: EUR 8.500,00.',
+  '',
+  'Lea Frei',
+].join('\n');
+
+/** Every field cited with a span that really occurs in DOCUMENT. */
+const QUOTES: Extraction['sourceQuotes'] = [
+  { field: 'policyNumber', quote: 'policy CH-MOT-2020-661234' },
+  { field: 'claimantName', quote: 'Lea Frei' },
+  { field: 'dateOfLoss', quote: '27 February 2025' },
+  { field: 'claimType', quote: 'I had an accident' },
+  { field: 'amount', quote: 'EUR 8.500,00' },
+  { field: 'currency', quote: 'EUR 8.500,00' },
+];
 
 const truth: GroundTruth = {
   policyNumber: 'CH-MOT-2020-661234',
@@ -23,24 +51,31 @@ const truth: GroundTruth = {
   missingFields: [],
   urgency: 'normal',
   category: 'motor-collision',
+  language: 'en',
   notes: 'fixture',
 };
 
 function result(overrides: Partial<TriageResult['extraction']> = {}, triage: Partial<TriageResult['triage']> = {}): TriageResult {
+  const extraction: Extraction = {
+    policyNumber: 'CH-MOT-2020-661234',
+    claimantName: 'Lea Frei',
+    dateOfLoss: '2025-02-27',
+    claimType: 'motor',
+    amount: 8500,
+    currency: 'EUR',
+    missingFields: [],
+    sourceQuotes: QUOTES,
+    ...overrides,
+  };
+
   return {
     documentId: 'fixture',
-    extraction: {
-      policyNumber: 'CH-MOT-2020-661234',
-      claimantName: 'Lea Frei',
-      dateOfLoss: '2025-02-27',
-      claimType: 'motor',
-      amount: 8500,
-      currency: 'EUR',
-      missingFields: [],
-      sourceQuotes: [],
-      ...overrides,
-    },
+    extraction,
     completeness: { missing: [], isComplete: true, disagreements: [] },
+    // Derived, not stubbed: overriding `sourceQuotes` in a test must actually change what
+    // grounding sees, or the grounding tests would be asserting against a hand-written
+    // answer instead of against the checker.
+    grounding: checkGrounding(extraction, DOCUMENT),
     triage: {
       urgency: 'normal',
       category: 'motor-collision',
@@ -125,6 +160,114 @@ describe('compareDocument', () => {
     const over = compareDocument(truth, result({}, { urgency: 'high' }));
     assert.equal(over.urgency.correct, false);
     assert.equal(over.urgency.underTriaged, false);
+  });
+});
+
+describe('quote grounding', () => {
+  it('records nothing when every field is cited with a real span', () => {
+    const comparison = compareDocument(truth, result());
+    assert.deepEqual(comparison.failures, []);
+    assert.deepEqual(comparison.grounding, {
+      grounded: 6,
+      quotesChecked: 6,
+      cited: 6,
+      citable: 6,
+      quotedButNull: 0,
+    });
+  });
+
+  it('flags a fabricated span without touching field accuracy', () => {
+    const comparison = compareDocument(
+      truth,
+      result({
+        sourceQuotes: QUOTES.map((q) =>
+          q.field === 'amount' ? { field: 'amount' as const, quote: 'total damage of EUR 8.500,00' } : q,
+        ),
+      }),
+    );
+
+    assert.deepEqual(categories(comparison), ['ungrounded-quote']);
+    assert.equal(comparison.failures[0]?.severity, 'soft');
+    assert.equal(comparison.failures[0]?.field, 'amount');
+    assert.equal(comparison.grounding.grounded, 5);
+    // The value is still right. Grounding is a separate axis and must not cost accuracy.
+    assert.equal(comparison.fields.amount.strict, true);
+    assert.equal(comparison.fields.amount.normalized, true);
+  });
+
+  it('reports uncited fields once per document, not once per field', () => {
+    const comparison = compareDocument(truth, result({ sourceQuotes: [] }));
+
+    assert.deepEqual(categories(comparison), ['missing-quote']);
+    assert.equal(comparison.failures[0]?.severity, 'soft');
+    assert.deepEqual(comparison.grounding, {
+      grounded: 0,
+      quotesChecked: 0,
+      cited: 0,
+      citable: 6,
+      quotedButNull: 0,
+    });
+  });
+
+  it('counts a span on a null field without calling it a failure', () => {
+    // The schema says to omit quotes for null fields. Ignoring that is an
+    // instruction-following defect, not fabricated evidence - the span is really there.
+    const comparison = compareDocument(
+      { ...truth, amount: null, missingFields: ['amount'] },
+      result({ amount: null, missingFields: ['amount'] }),
+    );
+
+    assert.deepEqual(categories(comparison), []);
+    assert.equal(comparison.grounding.quotedButNull, 1);
+    assert.equal(comparison.grounding.citable, 5);
+    assert.equal(comparison.grounding.cited, 5);
+  });
+
+  it('does not let an errored document dilute the grounding rate', () => {
+    const metrics = aggregate([compareDocument(truth, result()), failedDocument('boom', truth, 'api-error', 'reset')]);
+
+    // 6 of 6, not 6 of 12: the failed document cited nothing, so it is not evidence
+    // either way about whether the model fabricates spans.
+    assert.deepEqual(metrics.grounding?.grounded, { correct: 6, total: 6 });
+    assert.deepEqual(metrics.grounding?.cited, { correct: 6, total: 6 });
+  });
+});
+
+describe('sliceBy', () => {
+  it('splits the headline numbers by language and drops empty buckets', () => {
+    const de: GroundTruth = { ...truth, language: 'de' };
+    const comparisons = [
+      compareDocument(truth, result()),
+      compareDocument(de, result()),
+      compareDocument(de, result({ dateOfLoss: '2025-03-01' })),
+    ];
+
+    const slices = aggregate(comparisons).byLanguage;
+    assert.deepEqual(
+      slices?.map((s) => s.key),
+      ['de', 'en'],
+      'buckets follow the LANGUAGES order, and `mixed` is absent rather than empty',
+    );
+
+    const german = slices?.find((s) => s.key === 'de');
+    assert.equal(german?.documents, 2);
+    // One wrong date out of twelve German field cells.
+    assert.deepEqual(german?.fields.normalized, { correct: 11, total: 12 });
+
+    const english = slices?.find((s) => s.key === 'en');
+    assert.deepEqual(english?.fields.normalized, { correct: 6, total: 6 });
+  });
+
+  it('slices any dimension, not just the one the report happens to use', () => {
+    const slices = sliceBy(
+      [compareDocument(truth, result()), compareDocument(truth, result({}, { urgency: 'low' }))],
+      ['motor-collision', 'other'] as const,
+      (c) => c.category.expected as 'motor-collision' | 'other',
+    );
+
+    assert.equal(slices.length, 1);
+    assert.equal(slices[0]?.key, 'motor-collision');
+    assert.equal(slices[0]?.urgency.underTriaged, 1);
   });
 });
 

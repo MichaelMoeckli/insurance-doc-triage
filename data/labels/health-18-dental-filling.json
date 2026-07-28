@@ -8,5 +8,6 @@
   "missingFields": [],
   "urgency": "low",
   "category": "health-treatment",
+  "language": "en",
   "notes": "Straightforward low-value reimbursement. Present as a control: if this one is scored wrong, the failure is in the pipeline, not in the difficulty of the document."
 }

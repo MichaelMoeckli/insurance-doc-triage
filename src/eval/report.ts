@@ -17,7 +17,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PATHS, estimateCostUsd } from '../config.js';
 import { EXTRACTED_FIELDS, type ExtractedField, type TokenUsage } from '../types.js';
-import type { DocumentComparison, Ratio, RunMetrics } from './compare.js';
+import type { DocumentComparison, GroundingMetrics, Ratio, RunMetrics, SliceMetrics } from './compare.js';
 import { FAILURE_DESCRIPTIONS, tallyByCategory, type Failure, type FailureCategory } from './taxonomy.js';
 
 /**
@@ -327,6 +327,108 @@ function renderCostSection(record: RunRecord): string[] {
   return lines;
 }
 
+/**
+ * Quote grounding: does the model's own evidence exist in the document?
+ *
+ * Reported as its own section rather than folded into field accuracy, because the two
+ * answer different questions. Accuracy asks whether the value is right; this asks whether
+ * anything supports it. A field can be right and ungrounded (the model knew the answer
+ * and invented a citation) or wrong and grounded (it quoted the deductible and called it
+ * the claimed amount), and only the pair tells you whether the field can be automated.
+ */
+function renderGroundingSection(grounding: GroundingMetrics | undefined): string[] {
+  const lines: string[] = ['## Quote grounding', ''];
+
+  if (!grounding) {
+    lines.push(
+      'This run record predates quote grounding. Re-run `npm run eval` to populate this ' +
+        'section - it cannot be backfilled, because the check needs the cited spans and ' +
+        'run records store only the aggregate.',
+      '',
+    );
+    return lines;
+  }
+
+  lines.push(
+    'Every value the model fills in must come with the verbatim span it was taken from. ' +
+      'That claim is checked against the source document by substring match in ' +
+      '`src/pipeline/grounding.ts` - no model call, no ground truth - so it is one of the ' +
+      'few quality signals that still works on a document arriving in production, where ' +
+      'no label exists.',
+    '',
+    '| Metric | Result | Reads as |',
+    '| --- | --- | --- |',
+    `| Grounded spans | ${cell(grounding.grounded)} | Cited spans that occur in the document. Anything below 100% is fabricated evidence. |`,
+    `| Cited fields | ${cell(grounding.cited)} | Filled-in fields carrying a span at all. A gap here is unverifiable output, not dishonest output. |`,
+    `| Spans on null fields | ${grounding.quotedButNull} | The schema says to omit these. A non-zero count is an instruction-following defect, not a hallucination. |`,
+    '',
+    'Comparison is modulo whitespace and typography only - `12’450.00` matches ' +
+      "`12'450.00`, and a line break inside a span is ignored. Word order, digits and " +
+      'content punctuation are compared as written, so a paraphrased or stitched-together ' +
+      'span fails.',
+    '',
+    'Grounding is necessary for trusting a field and never sufficient: `CHF 500.00` is a ' +
+      'real span of `motor-01` and supports nothing about the claimed amount - it is the ' +
+      'deductible. Both grounding failure categories are therefore scored **soft**. They ' +
+      'are a separate axis from correctness, and folding them into the headline would ' +
+      'double-count the evidence and silently redefine the hard-failure row against every ' +
+      'run already recorded.',
+    '',
+  );
+  return lines;
+}
+
+/**
+ * The headline numbers, split by document language.
+ *
+ * A single field-accuracy figure averaged over German and English cannot answer the first
+ * question a Swiss carrier asks, and this dataset was built 11/11/3 precisely so the
+ * question is answerable. The bucket sizes are small enough that the caution below is
+ * part of the output rather than a footnote someone might skip.
+ */
+function renderLanguageSection(slices: readonly SliceMetrics[] | undefined): string[] {
+  const lines: string[] = ['## By document language', ''];
+
+  if (!slices || slices.length === 0) {
+    lines.push(
+      'This run record predates the per-language slice. Re-run `npm run eval` to populate ' +
+        'this section.',
+      '',
+    );
+    return lines;
+  }
+
+  lines.push(
+    'Language is a property of the label, not something the pipeline predicts or is ' +
+      'scored on. `mixed` means substantive content appears in both languages - a ' +
+      'bilingual heading, or German field labels around English prose. A Swiss proper ' +
+      'noun inside an English letter is not mixed; every document in the set has those.',
+    '',
+  );
+
+  lines.push('| Language | Docs | Field (norm.) | Field (strict) | `missingFields` | Urgency | Under-tri. | Category | Grounded |');
+  lines.push('| --- | ---: | --- | --- | --- | --- | ---: | --- | --- |');
+  for (const slice of slices) {
+    lines.push(
+      `| \`${td(slice.key)}\` | ${slice.documents} | ${cell(slice.fields.normalized)} | ` +
+        `${cell(slice.fields.strict)} | ${cell(slice.missingFieldsExact)} | ${cell(slice.urgency)} | ` +
+        `${slice.urgency.underTriaged} | ${cell(slice.category)} | ${cell(slice.grounding.grounded)} |`,
+    );
+  }
+  lines.push('');
+  lines.push(
+    '**Read the counts, not the percentages.** The largest bucket here is eleven ' +
+      'documents, so one flipped answer moves a per-language field figure by more than a ' +
+      'point and a half, and the `mixed` row is three documents - a single failure there ' +
+      'is a third of the bucket. A gap between languages is worth investigating only when ' +
+      'it is several documents wide and shows the same failure category on both sides of ' +
+      'it. The point of this table is to make a systematic language effect *visible* if ' +
+      'one exists, not to quantify one at this sample size.',
+  );
+  lines.push('');
+  return lines;
+}
+
 const FIELD_LABELS: Record<ExtractedField, string> = {
   policyNumber: 'policyNumber',
   claimantName: 'claimantName',
@@ -364,6 +466,7 @@ export function renderReport(current: RunRecord, allRuns: readonly RunRecord[]):
   lines.push(`| Category accuracy | ${cell(m.category)} |`);
   lines.push(`| \`missingFields\` exact set match | ${cell(m.missingFields.exact)} |`);
   lines.push(`| Under-triaged documents | ${m.urgency.underTriaged} |`);
+  if (m.grounding) lines.push(`| Grounded source quotes | ${cell(m.grounding.grounded)} |`);
   lines.push('');
   lines.push(
     'Strict compares exactly what the model emitted. Normalised applies the rules in ' +
@@ -401,6 +504,9 @@ export function renderReport(current: RunRecord, allRuns: readonly RunRecord[]):
   lines.push(`| Recall | ${(m.missingFields.recall * 100).toFixed(1)}% |`);
   lines.push(`| F1 | ${(m.missingFields.f1 * 100).toFixed(1)}% |`);
   lines.push('');
+
+  // --- Quote grounding ----------------------------------------------------
+  lines.push(...renderGroundingSection(m.grounding));
 
   // --- Classification -----------------------------------------------------
   lines.push('## Classification');
@@ -442,6 +548,9 @@ export function renderReport(current: RunRecord, allRuns: readonly RunRecord[]):
     }
     lines.push('');
   }
+
+  // --- Language slice -----------------------------------------------------
+  lines.push(...renderLanguageSection(m.byLanguage));
 
   // --- Cost and latency ---------------------------------------------------
   lines.push(...renderCostSection(current));
@@ -543,6 +652,20 @@ export function renderReport(current: RunRecord, allRuns: readonly RunRecord[]):
     row('`missingFields` exact set match', (r) => r.metrics.missingFields.exact);
     row('Urgency accuracy', (r) => r.metrics.urgency);
     row('Category accuracy', (r) => r.metrics.category);
+
+    // A metric added after some runs were recorded. The older columns get `n/a`, never a
+    // zero - a run that did not measure grounding is not a run that scored 0% on it. The
+    // whole row disappears if no run on disk has the metric at all.
+    const optionalRow = (label: string, pick: (r: RunRecord) => Ratio | undefined): void => {
+      if (!allRuns.some((run) => pick(run))) return;
+      const cells = allRuns.map((run, index) => {
+        const value = pick(run);
+        if (!value) return 'n/a';
+        return index === 0 ? cell(value) : `${cell(value)} (${delta(value, pick(baseline))})`;
+      });
+      lines.push(`| ${label} | ${cells.join(' | ')} |`);
+    };
+    optionalRow('Grounded source quotes', (r) => r.metrics.grounding?.grounded);
     lines.push(
       `| Under-triaged | ${allRuns.map((r) => String(r.metrics.urgency.underTriaged)).join(' | ')} |`,
     );

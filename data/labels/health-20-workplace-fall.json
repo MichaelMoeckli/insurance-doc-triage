@@ -8,5 +8,6 @@
   "missingFields": [],
   "urgency": "high",
   "category": "health-accident",
+  "language": "mixed",
   "notes": "The nastiest name distractor in the set: the HR contact Vesna Petrović shares a surname with the injured employee, and the employer is Petrović Bau AG. Also tests claimType - a UVG workplace accident is health, not liability."
 }

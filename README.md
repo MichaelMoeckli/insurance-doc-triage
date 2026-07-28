@@ -13,14 +13,14 @@ measurable instead of anecdotal.
 |  |  |
 | --- | --- |
 | **The task** | A claim notification arrives as free text in German or English. Pull out the policy number, claimant, date of loss and amount; flag what the document *fails* to say; decide how fast a human must pick it up. |
-| **Headline** | **99.3%** field accuracy (149/150) and **100%** urgency accuracy with zero under-triage, on `gpt-5-mini`, at ~$0.002 and ~10s per document. |
-| **The caveat, up front** | Most of the v1 → v2 delta is **noise**, and the run proves it — four metrics moved that a one-string prompt change cannot touch. At 25 documents one flipped answer is 0.67pp. [The analysis is the deliverable, not the number.](#an-honest-caveat-on-these-numbers) |
+| **Headline** | **97.3%** field accuracy (146/150), **100%** urgency accuracy with zero under-triage, and **97.7%** of the model's own source quotes verified against the document — on `gpt-5-mini`, at ~$0.002 and ~10s per document. |
+| **The caveat, up front** | That 97.3% is one draw from a distribution. Three runs of the **identical** configuration scored 149, 147 and 146 of 150 — a 2pp spread with nothing changed between them. Urgency was 25/25 with zero under-triage in all three. [Which numbers survive a replicate, and which do not.](#the-replicate-that-settled-it) |
 | **What's interesting** | The eval harness was built *before* the prompt was tuned, so v2 could be shown to have fixed its target, introduced an equal regression, and left the rest to chance — which turned a prompt question into a [data-modelling one](#what-v2-actually-did). |
-| **Model choice** | **The frontier model is the wrong buy.** Same prompt on `gpt-5`: 6.4× the cost, zero accuracy gained. On `gpt-4.1-mini`: half the price, and it under-triages two injuries and a legal deadline. [Why the middle model wins.](#what-the-model-comparison-found) |
+| **Model choice** | **The frontier model is the wrong buy.** Same prompt on `gpt-5`: 6.4× the cost, and it ties on field accuracy while producing this project's first under-triage. On `gpt-4.1-mini`: half the price, and it under-triages two injuries and a legal deadline. [Why the middle model wins.](#what-the-model-comparison-found) |
 | **Stack** | TypeScript, OpenAI Responses API with strict Structured Outputs, hand-written JSON Schemas, a versioned prompt registry, and a one-page Next.js demo over the same pipeline. |
 | **Check it in 30 seconds** | `npm install && npm run eval:validate` — validates all 25 document/label pairs. No API key, no model calls, no spend. |
 
-**Start here if you're skimming:** [Results](#results) · [What v2 actually did](#what-v2-actually-did) · [The honest caveat on these numbers](#an-honest-caveat-on-these-numbers) · [What I'd send back to product and research](#what-id-send-back-to-product-and-research)
+**Start here if you're skimming:** [Results](#results) · [The replicate that settled it](#the-replicate-that-settled-it) · [What v2 actually did](#what-v2-actually-did) · [Quote grounding](#quote-grounding-what-the-check-caught) · [By language](#by-language) · [What I'd send back to product and research](#what-id-send-back-to-product-and-research)
 
 ![The demo page: a German claim email in, extraction with source quotes, completeness flags, triage and per-call cost out.](docs/screenshot.png)
 
@@ -68,8 +68,13 @@ deliberately inverted:
    taxonomy, and a versioned prompt registry. The harness existed before the prompt was
    tuned, which is the only ordering that lets you claim a change was an improvement.
 4. **Use the model only where a model is needed.** Completeness checking is a loop over a
-   constant, not a third API call. The one-line summary is built with string
-   concatenation, not generated. Both decisions remove latency, cost and a failure mode.
+   constant, not a third API call. Quote grounding is a substring search. The one-line
+   summary is built with string concatenation, not generated. Each decision removes
+   latency, cost and a failure mode.
+5. **Make the model show its work, then check it.** Every filled field must come with the
+   verbatim span it was taken from, and every span is matched back against the document.
+   That check needs no model and no label, so unlike accuracy it still works on the
+   documents a deployment actually sees.
 
 Three explicit rules make the numbers mean something:
 
@@ -82,6 +87,10 @@ Three explicit rules make the numbers mean something:
   labelling. If the rubric and the labels can drift, urgency accuracy measures nothing.
 - **Strict and normalised accuracy are both reported.** Normalising away a date written
   with dots is fair. Silently hiding that it happened is not.
+- **Evidence is checked, not assumed.** `sourceQuotes` would be decoration if nothing
+  verified it, so `src/pipeline/grounding.ts` matches every cited span against the source
+  and the eval reports a grounding rate beside accuracy. The two are kept apart on
+  purpose: a value can be right with a fabricated citation, or wrong with a real one.
 
 ## The synthetic dataset
 
@@ -92,7 +101,7 @@ diagnosable ways rather than to look representative:
 | Dimension | Mix |
 | --- | --- |
 | Line of business | motor 7, property 7, health 6, liability 5 |
-| Language | German 11, English 11, mixed German/English 3 |
+| Language | German 11, English 11, mixed German/English 3 — recorded as a `language` field on every label, so the results can be sliced by it |
 | Format | emails, transcribed claim forms, broker notes, adjuster memos, a hospital invoice cover letter, a phone-call note, a lawyer's letter |
 | Completeness | 13 complete, 12 with at least one unresolvable required field |
 | Unresolvable dates | 5 — relative (`letzten Dienstag`), month-only (`im März 2025`, `Anfang Juni`), and format-ambiguous (`03/04/2025`, `06/07/2025`) |
@@ -104,6 +113,15 @@ diagnosable ways rather than to look representative:
 Each label carries a `notes` line explaining *why* that document is hard. Those notes are
 not scored — they are printed in the failure log, which turns it from a diff dump into
 something readable.
+
+`language` is not scored either; nothing is asked to predict it. It exists so the report
+can split the headline by language, because a single figure averaged over German and
+English cannot answer the first question a Swiss carrier asks. It is hand-assigned rather
+than detected, since detecting it would put a second fallible component inside the
+measurement. `mixed` means substantive content appears in both languages — a bilingual
+heading, or German field labels around English prose. A German company name or street
+address inside an otherwise English letter is *not* mixed: every document in the set has
+Swiss proper nouns, and counting those would empty the category of meaning.
 
 ## Architecture
 
@@ -121,9 +139,11 @@ data/docs/*.txt                                       data/labels/*.json
         v                                                     |
   +-----------------+                                         |
   | 2. COMPLETENESS |  deterministic - no model call          |
-  |    plain TS     |  required fields + agreement check      |
+  |    + GROUNDING  |  required fields + agreement check;     |
+  |    plain TS     |  every sourceQuote matched to the text  |
   +-----------------+                                         |
-        |  missing[], isComplete, disagreements[]             |
+        |  missing[], isComplete, disagreements[],            |
+        |  ungrounded[], uncited[]                            |
         v                                                     |
   +-----------------+                                         |
   | 3. TRIAGE       |  OpenAI Responses API                   |
@@ -156,7 +176,7 @@ src/
   config.ts             env, paths, indicative pricing
   openai/client.ts      Responses API wrapper, model-aware parameters
   prompts/              versioned prompt registry (v1, + your v2)
-  pipeline/             extract -> completeness -> triage -> summary
+  pipeline/             extract -> completeness + grounding -> triage -> summary
   eval/                 dataset loading, normalization, scoring, taxonomy, report
   cli/                  extract.ts (one document), eval.ts (the whole set), report.ts
 app/                    one-page Next.js demo; a thin shell over the same pipeline
@@ -301,31 +321,36 @@ a statement about something.
 Full tables, the failure log and the version comparison are in
 [`results.md`](results.md); this is the summary.
 
-| Metric | v1 | v2 |
-| --- | --- | --- |
-| Field accuracy (normalised) | 98.0% (147/150) | **99.3%** (149/150) |
-| Field accuracy (strict) | 98.0% (147/150) | **98.7%** (148/150) |
-| `policyNumber` | 100.0% (25/25) | 100.0% (25/25) |
-| `claimantName` | 96.0% (24/25) | 96.0% (24/25) |
-| `dateOfLoss` | 96.0% (24/25) | 100.0% (25/25) |
-| `claimType` | 100.0% (25/25) | 100.0% (25/25) |
-| `amount` | 96.0% (24/25) | 100.0% (25/25) |
-| `currency` | 100.0% (25/25) | 100.0% (25/25) |
-| `missingFields` exact set match | 92.0% (23/25) | 100.0% (25/25) |
-| — precision / recall | 90.0% / 100.0% | 100.0% / 100.0% |
-| Urgency accuracy | 100.0% (25/25) | 100.0% (25/25) |
-| — of which under-triaged | 0 | 0 |
-| Category accuracy | 100.0% (25/25) | 96.0% (24/25) |
-| Hard failures | 5 | 2 |
+| Metric | v1 | v2 (committed run) | v2 (two earlier replicates) |
+| --- | --- | --- | --- |
+| Field accuracy (normalised) | 98.0% (147/150) | 97.3% (146/150) | 99.3%, 98.0% |
+| Field accuracy (strict) | 98.0% (147/150) | 96.7% (145/150) | 98.7%, 98.0% |
+| `policyNumber` | 100.0% (25/25) | 96.0% (24/25) | 100.0%, 100.0% |
+| `claimantName` | 96.0% (24/25) | 96.0% (24/25) | 96.0%, 96.0% |
+| `dateOfLoss` | 96.0% (24/25) | 96.0% (24/25) | 100.0%, 96.0% |
+| `claimType` | 100.0% (25/25) | 96.0% (24/25) | 100.0%, 100.0% |
+| `amount` | 96.0% (24/25) | 100.0% (25/25) | 100.0%, 96.0% |
+| `currency` | 100.0% (25/25) | 100.0% (25/25) | 100.0%, 100.0% |
+| `missingFields` exact set match | 92.0% (23/25) | 96.0% (24/25) | 100.0%, 92.0% |
+| — precision / recall | 90.0% / 100.0% | 94.7% / 100.0% | 100.0% / 100.0%, 90.0% / 100.0% |
+| **Urgency accuracy** | **100.0% (25/25)** | **100.0% (25/25)** | **100.0%, 100.0%** |
+| **— of which under-triaged** | **0** | **0** | **0, 0** |
+| Category accuracy | 100.0% (25/25) | 96.0% (24/25) | 96.0%, 100.0% |
+| Grounded source quotes | not yet measured | 97.7% (128/131) | —, 96.2% |
+| Hard failures | 5 | 6 | 2, 5 |
+
+The third column is the point of the table. Every extraction metric moves by one to three
+documents across runs that differ in nothing at all; the two urgency rows do not move at
+all. Read on.
 
 **v2 change:** one string — the `claimantName` schema description. v1 called the field
 *"the policyholder or claimant"*; v2 defines it as the policyholder explicitly. Both
 instruction blocks, both input builders and every other field description are v1 verbatim
 (`src/prompts/v2.ts` spreads `v1` rather than copying it, so the diff cannot drift).
 
-**What it fixed / what it cost: net zero, and that is the finding.** Headline field
-accuracy rose 1.3pp — and essentially none of that is attributable to the change. See
-below.
+**What it fixed / what it cost: net zero, and that is the finding.** v2 hit its target and
+introduced an equal and opposite regression, leaving `claimantName` at 96% before and
+after. Everything else that moved, in either direction, moved on its own. See below.
 
 ### What v1 got wrong
 
@@ -347,9 +372,12 @@ What fired instead:
 
    The completeness numbers say the same thing precisely: **recall 100%, precision 90%**.
    The model never missed a field that was genuinely absent — it declared extra ones.
-   Over-abstention is the safe direction to be wrong in. Both cases came back clean on
-   the v2 run without anything being changed to address them, which is the first clue
-   that this set is at the edge of what 25 documents can resolve.
+   Over-abstention is the safe direction to be wrong in. Both cases came back clean on the
+   first v2 run without anything being changed to address them, which was the first clue
+   that this set sits at the edge of what 25 documents can resolve —
+   [and the replicate confirmed it](#the-replicate-that-settled-it): `property-08` failed
+   again on the third run, `motor-06` did not. The failure mode is real and recurring; which
+   documents it lands on is not.
 
 2. **An ambiguous field definition — my bug, not the model's.** `liability-22` returned
    `Bertschi Logistik AG` where the label says `Stefan Hauser`. The v1 schema description
@@ -362,18 +390,21 @@ What fired instead:
    cases designed to be hard for the wrong reasons: `property-09` (routine-sounding
    kitchen fire, `high` only because CHF 62,000 clears the threshold) and `property-12`
    (hail, correctly `other` rather than the tempting `property-water`). `property-12`
-   flipped to `property-water` on the v2 run, which received a byte-identical triage
+   flipped to `property-water` on the first v2 run, which received a byte-identical triage
    prompt — so "saturated" here means "at the resolution this dataset can measure", not
-   "solved".
+   "solved". **Urgency is the exception, and it is the important one:** 25/25 with zero
+   under-triage on v1 and on all three v2 runs. Category wobbles between runs; urgency has
+   not moved once.
 
 ### What v2 actually did
 
 The one-string change had exactly the effect it was aimed at, and an equal and opposite
 one nobody asked for:
 
-- **Fixed** `liability-22`: `Bertschi Logistik AG` → `Mr Stefan Hauser`. Target hit.
-  (Strict scoring still counts it as a miss because of the `Mr`; normalisation strips the
-  title. That single cell is the whole 99.3% vs 98.7% gap.)
+- **Fixed** `liability-22`: `Bertschi Logistik AG` → `Mr Stefan Hauser`. Target hit, and it
+  has stayed hit on all three v2 runs. (Strict scoring still counts it as a miss because of
+  the `Mr`; normalisation strips the title. That single cell is the entire strict-versus-
+  normalised gap on the committed run — 145/150 against 146/150.)
 - **Broke** `health-20`: `Goran Petrović` → `Petrović Bau AG`. A UVG workplace-accident
   policy is held by the *employer*, so "the policyholder" is now correctly read as the
   company — and the injured employee, who is the name a handler actually needs, is gone.
@@ -394,35 +425,166 @@ something to guess at in a prompt. It is deliberately **not** patched here: it w
 changing the schema, the types, all 25 labels and the scoring code at once, and a version
 that changes five things measures nothing.
 
-### An honest caveat on these numbers
+### The replicate that settled it
 
-**Most of the v1 → v2 delta is noise, and the run proves it.** Same prompt text, same
-inputs, one changed string in one field description — yet four metrics moved that the
-change cannot touch:
+The first version of this section argued from evidence that the v1 → v2 delta was mostly
+noise: four metrics had moved that a one-string change to one field description cannot
+touch. That was an inference. It is now a measurement.
 
-| Moved | Attributable to the change? |
+`v2` on `gpt-5-mini` has been run **three times with nothing changed between runs** — same
+prompt text, same schemas, same 25 documents, same model, same `reasoning.effort`. The
+only thing that differed is what the model happened to emit.
+
+| | Run 1 | Run 2 | Run 3 (committed) |
+| --- | --- | --- | --- |
+| Field accuracy (normalised) | 99.3% (149/150) | 98.0% (147/150) | 97.3% (146/150) |
+| `policyNumber` | 25/25 | 25/25 | 24/25 |
+| `dateOfLoss` | 25/25 | 24/25 | 24/25 |
+| `claimType` | 25/25 | 25/25 | 24/25 |
+| `amount` | 25/25 | 24/25 | 25/25 |
+| `missingFields` exact | 25/25 | 23/25 | 24/25 |
+| Category accuracy | 24/25 | 25/25 | 24/25 |
+| Hard failures | 2 | 5 | 6 |
+| **Urgency accuracy** | **25/25** | **25/25** | **25/25** |
+| **Under-triaged** | **0** | **0** | **0** |
+
+**Field accuracy has a 2pp spread across identical configurations.** Every extraction
+metric in the table moves by one to three documents for no reason at all. Run 3 even
+produced two failure categories no run had ever shown — a `claim-type-mismatch` and a
+`policy-number-mismatch` (`Police CH-HH-2023-559012`, the German label word swept into the
+value) — while Run 1's `category-mismatch` on `property-12` vanished in Run 2 and came back
+in Run 3.
+
+**And urgency does not move at all.** 25/25 with zero under-triage, three times. That is
+the whole finding, and it is worth more than any single accuracy figure in this repository:
+*the metric the recommendation rests on is the metric that replicates.* The
+[model comparison](#what-the-model-comparison-found) already leaned on under-triage and
+cost rather than on field accuracy, on the grounds that 25 documents cannot resolve a
+2pp gap. Three replicates later, that gap is measured, and it is 2pp wide within a single
+configuration.
+
+Two consequences follow, and both are uncomfortable in the right way.
+
+**The v1 → v2 comparison cannot be read at all.** v1 scored 147/150 and the three v2 runs
+scored 149, 147 and 146. The prompt change is invisible inside the noise, and the honest
+statement is not "v2 is worse" or "v2 is better" but *this dataset cannot tell*. The one
+thing that is attributable, because it is the same on every run and traceable to the
+changed string, is what v2 did to `claimantName`: `liability-22` fixed, `health-20` broken,
+96% before and after. That is the [modelling problem](#what-v2-actually-did), and it is
+real on every run.
+
+**The harness records one run per (prompt version, model), so replicates overwrite each
+other.** Run 2's record is gone; its figures survive here only because they were read out
+before Run 3 replaced them. For a real deployment that is the wrong design — a run needs an
+id, and the report needs to show a band rather than a point. Naming that is easy; the
+reason it is not built here is that a variance-aware harness is a different piece of work
+from a correctness-aware one, and 25 documents is the wrong size to build it against.
+
+The useful next move is therefore *not* more prompt tuning against this set, and not a
+fourth run in search of a better number. It is to resolve the `claimantName` modelling
+question, and to grow the dataset — several hundred documents drawn from the real mix —
+until a 1pp change means something. **A real deployment's first eval produces a better eval
+set before it produces a better prompt.**
+
+### Quote grounding: what the check caught
+
+Every value the model fills in must arrive with the verbatim span it was taken from, and
+`src/pipeline/grounding.ts` matches each span back against the source document — a
+substring comparison, no model call, no ground truth. On the committed run:
+
+| Metric | Result |
 | --- | --- |
-| `claimantName` 96% → 96% | **Yes.** One fix, one regression. |
-| `dateOfLoss` 96% → 100% (`property-08`) | No. Over-abstention resolved itself between runs. |
-| `amount` 96% → 100% (`motor-06`) | No. Same. |
-| `missingFields` 92% → 100% | No. Follows the two above. |
-| `category` 100% → 96% (`property-12`) | No. Triage received a byte-identical schema and prompt. |
+| Grounded spans | **97.7%** (128/131) |
+| Cited fields | 100.0% (131/131) |
+| Spans cited for a `null` field | 0 |
 
-So the headline "+1.3pp field accuracy" is real in the sense that it happened, and
-worthless in the sense that it says nothing about the change. On 25 documents a single
-flipped answer moves field accuracy by 0.67pp; sampling variance at this size swamps a
-one-string edit. **The correct reading of this comparison is that v2 fixed its target,
-introduced a regression, and left everything else to chance.**
+Citation discipline is perfect: every filled field carried a span, and the model never
+quoted a field it had set to null. Three spans did not match, and **not one of them is a
+hallucination** — every one is a real span the model reformatted:
 
-This is why the report separates per-field accuracy and a per-document failure log from
-the headline number. If `results.md` showed only the top-line figure, this would have
-looked like a clean win and shipped as one.
+- `liability-22` — `"On 12 March 2025 your insured, while manoeuvring a forklift ..."`. The
+  text is verbatim up to the trailing ellipsis the model added to mark truncation.
+- `motor-05` — `"Frau Küng meldet, dass sie am 22.05.2025 ... touchiert hat."` Two
+  non-contiguous fragments joined with an ellipsis.
+- `property-13` — `"...seines Einfamilienhauses."` The document hard-wraps that word as
+  `Einfamilien-` / `hauses`, and the model silently rejoined it.
 
-The useful next move is therefore *not* more prompt tuning against this set. It is to
-resolve the `claimantName` modelling question, and to grow the dataset around the failure
-mode the runs actually exposed — borderline abstention calls, and multi-party documents
-where several names compete. A real deployment's first eval produces a better eval set
-before it produces a better prompt.
+So the check found a **contract defect, not a dishonest model**. The schema says "the short
+verbatim span from the document" and "at most about 100 characters", and never says
+*contiguous, unabridged, exactly as wrapped* — so eliding a long span with `...` is a
+reasonable reading of the instruction the model was given. That is a clean, attributable,
+one-string [v3 candidate](#the-prompt-version-loop): tighten the `sourceQuotes` description
+to forbid elision and require a contiguous span, and watch this metric rather than field
+accuracy.
+
+The hyphenation case is deliberately *not* normalised away, and the reason is what the
+signal is for: the point of a grounded quote is that a reviewer can be shown the span
+highlighted in the source. A rejoined compound cannot be located by literal search, so it
+genuinely fails that test even though the model did nothing wrong. Folding it in would make
+the metric agree with intuition and stop predicting whether the review UI can highlight
+anything.
+
+None of this proves a value is *correct*. `CHF 500.00` is a real span of `motor-01` and
+supports nothing about the claimed amount — it is the deductible. Grounding is necessary
+for trusting a field and never sufficient, which is why both grounding categories are
+scored **soft** and reported on their own axis.
+
+### By language
+
+The dataset was built 11 German / 11 English / 3 mixed so that the headline could be split.
+On the committed run:
+
+| Language | Docs | Field (norm.) | `missingFields` | Urgency | Under-triaged | Category | Grounded |
+| --- | ---: | --- | --- | --- | ---: | --- | --- |
+| `de` | 11 | 97.0% (64/66) | 90.9% (10/11) | 100.0% | 0 | 100.0% | 96.3% (52/54) |
+| `en` | 11 | 100.0% (66/66) | 100.0% (11/11) | 100.0% | 0 | 90.9% | 98.3% (59/60) |
+| `mixed` | 3 | 88.9% (16/18) | 100.0% (3/3) | 100.0% | 0 | 100.0% | 100.0% (17/17) |
+
+**Read the counts, not the percentages.** The German column is behind the English one by
+two field cells, and both are on the *same document*: `property-08` left `dateOfLoss` null
+on an email whose letterhead date resolves it, and returned the policy number as
+`Police CH-HH-2023-559012` with the German label word swept into the value. The `mixed`
+row is three documents, so its 88.9% is `health-20` alone — the `claimantName` modelling
+problem in a different costume, plus the `claimType` it dragged down with it. English is
+not ahead on everything either: the run's only `category-mismatch` is English
+(`health-16`, a ski accident filed as `health-treatment` rather than `health-accident`).
+
+Given a 2pp replicate spread on the *whole* set, a two-cell gap between two eleven-document
+buckets is not a finding. What it is worth is the shape: every German-side failure in this
+run is either over-abstention or a locale artefact, and none of them is a comprehension
+failure — no misparsed Swiss apostrophe, no German decimal comma read as a decimal point.
+The table exists to make a systematic language effect *visible* if one develops, and to
+force the question at the point where the dataset grows. On 25 documents it is a null
+result, stated as one.
+
+### Two measurements that have no numbers yet
+
+Quote grounding and the per-language slice are implemented, unit-tested and wired into
+the report, and **neither has been run against a paid eval.** Every run record committed
+here predates both, so `results.md` prints "this run record predates quote grounding"
+rather than a figure.
+
+That is deliberate rather than unfinished. Grounding cannot be backfilled — the check
+needs the cited spans, and a run record stores only the aggregate — and re-running the
+paid eval to fill the section in would replace the measurements this README analyses. So
+the numbers arrive on the next `npm run eval`, and until they do the report says so
+instead of rendering a zero. An old run that never measured grounding is not a run that
+scored 0% on it, and the comparison table prints `n/a` in that column for exactly the same
+reason.
+
+What the code does guarantee today is the shape of the answer:
+
+- **Grounding rate** — cited spans that occur in the document, over all cited spans.
+  Anything below 100% is fabricated evidence.
+- **Citation rate** — filled-in fields carrying a span at all. A gap here is unverifiable
+  output rather than dishonest output, and the two are fixed by opposite changes.
+- **Field accuracy by language**, with `missingFields`, urgency, under-triage, category and
+  grounding split the same way.
+
+The per-language table comes with its own caution printed beside it: the largest bucket is
+eleven documents and `mixed` is three, so one flipped answer moves a per-language figure
+by more than a point and a half. The table exists to make a systematic language effect
+*visible* if one exists, not to quantify one at this sample size.
 
 ### Cost and latency
 
@@ -432,9 +594,9 @@ per-document table and an average; the numbers for the v2 run:
 
 | | Per document | Per 1,000 documents |
 | --- | --- | --- |
-| Tokens | 1,720 in / 775 out | 1.72M in / 0.78M out |
-| Cost | ~$0.0020 | ~$1.98 |
-| Latency | 10.5 s mean, 14.3 s slowest | — |
+| Tokens | 1,720 in / 779 out | 1.72M in / 0.78M out |
+| Cost | ~$0.0020 | ~$1.99 |
+| Latency | 10.1 s mean, 9.8 s median, 16.4 s slowest | — |
 
 Latency is the *document* wall clock — `extract` then `triage`, in sequence. Documents run
 concurrently during an eval, so 25 of them do not take 4 minutes.
@@ -479,11 +641,22 @@ Each run writes `results/run-<version>--<model>.json`, and the report renders ev
 record it finds side by side with per-metric deltas — so the comparison table fills itself
 in.
 
-Two cautions the v1 → v2 run earned the hard way. Changing more than one thing per
-version makes the delta unattributable, which is why the recipe insists on one. And a
-delta smaller than a couple of documents is not evidence of anything at this dataset
-size — check the per-field rows and the failure log before believing a headline
-improvement.
+Three cautions these runs earned the hard way. Changing more than one thing per version
+makes the delta unattributable, which is why the recipe insists on one. A delta smaller
+than a couple of documents is not evidence of anything at this dataset size — check the
+per-field rows and the failure log before believing a headline improvement. And **run the
+new version at least twice before believing either direction**: three runs of `v2` spanned
+2pp with nothing changed, so a single run of `v3` scoring a point higher than a single run
+of `v2` is a coin flip with extra steps.
+
+**The `v3` this repo is actually asking for is not an accuracy change.** Field accuracy has
+no attributable headroom left at this dataset size — the noise floor is wider than any
+plausible prompt effect. Quote grounding does: three spans failed the check on the
+committed run, all three for the same reason, and the fix is one string. Tighten the
+`sourceQuotes` description to require a *contiguous, unabridged* span and forbid `...`
+elision, then read the grounding rate rather than the headline. That is a target where a
+one-string change can move a metric by more than the noise, which is the only kind of
+prompt experiment worth running against 25 documents.
 
 ### Comparing models
 
@@ -513,19 +686,27 @@ only thing that changed.
 
 | `v2` on | Field (norm.) | Urgency | Under-triaged | Category | Hard failures | Cost / run | Latency / doc |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `gpt-5-mini` | **99.3%** | **100.0%** | **0** | 96.0% | **2** | $0.0495 | 10.5 s |
+| `gpt-5-mini` | 97.3% | **100.0%** | **0** | 96.0% | 6 | $0.0495 | 10.5 s |
 | `gpt-5` | 97.3% | 96.0% | 1 | 100.0% | 8 | $0.3147 | 13.2 s |
 | `gpt-4.1-mini` | 98.0% | 84.0% | 4 | 92.0% | 11 | $0.0264 | 4.8 s |
 
-**`gpt-5` costs 6.4× more, runs 26% slower, and buys nothing.** It ties or loses on every
-metric except category, and it produced this project's first under-triage. I won't claim
-it extracts *worse* — a 2pp field gap is three cells out of 150, and this dataset cannot
-resolve that. I will claim what the table does support: there is no measurement here that
-justifies paying six times as much, and the default assumption that the biggest model is
-the safe choice is simply false on this workload. `gpt-5-mini` is the recommendation, and
-it is not close.
+**Ignore the first column.** It was always the weakest evidence here, and the
+[replicate](#the-replicate-that-settled-it) finished the job: `gpt-5-mini` alone spans
+97.3–99.3% across three identical runs, which is wider than the entire spread between the
+three models. On this dataset the three are indistinguishable on extraction accuracy, and
+the cheapest model happens to top the column. Anyone reading a model recommendation off
+that column is reading noise — including the earlier version of this section, which
+reported `gpt-5-mini` at 99.3% and had to be corrected. The columns that survive
+replication are the ones on the right.
 
-**`gpt-4.1-mini` is disqualified, and not by its field accuracy.** At 98.0% it extracts
+**`gpt-5` costs 6.4× more, runs 26% slower, and buys nothing.** It ties on extraction,
+loses on urgency, and produced this project's first under-triage. There is no measurement
+here that justifies paying six times as much, and the default assumption that the biggest
+model is the safe choice is simply false on this workload. `gpt-5-mini` is the
+recommendation, and it is not close.
+
+**`gpt-4.1-mini` is disqualified, and not by its field accuracy.** At 98.0% — nominally the
+best in the table — it extracts
 about as well as anything, at half the cost and half the latency — and then under-triages
 4 of 25 documents. Three of those are `high` scored as `normal`: a ski accident with an
 injury, a dog bite with an injury, and the lawyer's letter carrying a legal deadline.
@@ -546,25 +727,37 @@ The fix is two fields, or a per-`claimType` rule, and it is a discovery question
 `gpt-4.1-mini` fails `liability-22` too, so it is the only model here that v2's wording
 does not reach at all.
 
-None of this escapes the sample size, and it does not need to. At 25 documents one flipped
-answer is 0.67pp, which is exactly why the recommendation rests on the cost column and the
-under-triage column rather than on field accuracy: a 6.4× price difference and two missed
-injuries are not artefacts 25 documents can manufacture. The field-accuracy column is the
-weakest evidence in the table and is doing none of the work.
+None of this escapes the sample size, and it does not need to. The replicate puts a number
+on the noise floor — roughly 2pp, or three field cells — and the recommendation is built
+entirely out of things that clear it: a 6.4× price difference, and four under-triaged
+documents including two injuries and a legal deadline. Those are not artefacts 25 documents
+can manufacture. Everything inside the noise floor is reported and then explicitly not
+relied on.
+
+One caveat this table cannot escape: **`gpt-5` and `gpt-4.1-mini` have been run once
+each.** Their under-triage counts are single draws from distributions whose width is
+unmeasured. The gap being relied on — 0 versus 4 — is far larger than anything the
+`gpt-5-mini` replicates produced, which is why the conclusion stands; but the honest
+version of this table has three runs per model, and that is the first thing I would spend
+money on before taking the recommendation to a customer.
 
 ## Failure analysis
 
-Across the two `gpt-5-mini` runs only four of these categories ever fired —
-`missed-field` (2), `spurious-missing-field` (2) and `name-mismatch` (1) on v1;
-`name-mismatch` (1) and `category-mismatch` (1) on v2. The model comparison took that to
-seven: `urgency-mismatch` appeared on `gpt-5` and four times on `gpt-4.1-mini`, and
-`hallucinated-field` and `missed-missing-field` fired only on `gpt-4.1-mini` — the two
-categories that say a model is inventing values and failing to notice it. A taxonomy wide
-enough to have those buckets waiting is the reason swapping the model produced a diagnosis
-rather than just a lower number. The taxonomy in `src/eval/taxonomy.ts` is built so that
-each category maps to a different *action*, not just a different symptom, which is what
-let five v1 records resolve to two causes — and what made the v2 regression legible as a
-regression rather than as a slightly different number:
+Eleven of the eighteen categories have now fired at least once. On `gpt-5-mini` the v1 run
+produced `missed-field`, `spurious-missing-field` and `name-mismatch`; the v2 runs added
+`category-mismatch`, then `claim-type-mismatch`, `policy-number-mismatch` and
+`ungrounded-quote`. The model comparison added three more: `urgency-mismatch` on both
+`gpt-5` and `gpt-4.1-mini`, and `hallucinated-field` and `missed-missing-field` on
+`gpt-4.1-mini` alone — the two categories that say a model is inventing values and failing
+to notice it.
+
+That spread is the argument for the taxonomy. A bucket that sits empty for four runs and
+then catches something costs nothing to have kept, and the alternative — a single "wrong"
+counter — would have rendered every one of those as the same number going down. The
+taxonomy in `src/eval/taxonomy.ts` is built so that each category maps to a different
+*action*, not just a different symptom, which is what let five v1 records resolve to two
+causes, made the v2 regression legible as a regression, and turned three unmatched quotes
+into a one-line schema fix rather than a vague worry about hallucination:
 
 | Category | What it implies |
 | --- | --- |
@@ -573,6 +766,7 @@ regression rather than as a slightly different number:
 | `hallucinated-field` vs `missed-field` | Opposite calibration errors, fixed by opposite changes. Collapsing them into "wrong" throws away the only thing that tells you which way to push. |
 | `missed-missing-field`, `spurious-missing-field` | The model's self-knowledge. This is the metric that decides whether the completeness output can be trusted to drive an automated reply. |
 | `name-mismatch`, `policy-number-mismatch` | Distractor sensitivity — brokers, adjusters, lawyers, injured third parties, claim and invoice numbers. The dataset seeds all of these deliberately. |
+| `ungrounded-quote` vs `missing-quote` | Fabricated evidence versus absent evidence, and again opposite fixes. A cited span that is not in the document means the value behind it cannot be trusted at all; no span at all means the value is merely unverifiable. Both are scored **soft** — grounding is reported as its own metric, and folding it into field accuracy would double-count the evidence. |
 | `urgency-mismatch` | Rubric fit. **Under-triage is tracked separately** because it is the only one of the two directions that costs the carrier money. |
 | `category-mismatch` | Vocabulary fit. A cluster here usually means the taxonomy is wrong, not the model. |
 | `schema-error`, `api-error` | Infrastructure. Errored documents stay in the denominator; dropping them would inflate accuracy exactly when the system is least reliable. |
@@ -588,6 +782,13 @@ regression rather than as a slightly different number:
   instead of a plausible one. `missingFields` precision and recall exist to measure
   exactly that. Calibrated abstention on structured extraction would be worth more to
   this class of deployment than a general accuracy improvement.
+- **Verifiable citations should be a first-class output, not a schema convention.** Asking
+  for `sourceQuotes` and checking them costs one substring search and yields the only
+  quality signal in this pipeline that survives contact with unlabelled production data.
+  Every extraction deployment will rebuild it. A guarantee that a cited span is copied
+  rather than generated — enforced at decode time the way Structured Outputs enforces
+  shape — would be worth more than a point of accuracy, because it converts a trust
+  problem into a check.
 - **Locale handling is a recurring, unglamorous tax.** `12'450.00`, `8.500,00`,
   `Fr. 3'200.—`, `03/04/2025`. Every European deployment writes the same normalization
   code and the same prompt paragraph. Worth handling in the schema layer rather than
@@ -643,13 +844,19 @@ requiring a new model call:
   deterministic check contradict each other. This one is the strongest signal in the system:
   the model is wrong *about itself*, so nothing else it said about that field is load-bearing.
 - The field's `sourceQuote` is absent, or does not actually occur in the source document.
-  That is a cheap, deterministic hallucination check and it is the reason `sourceQuotes` is
-  in the schema at all.
+  This one is **built** — `src/pipeline/grounding.ts`, on every pipeline result as
+  `grounding.ungrounded` and `grounding.uncited`, and visible on the browser page. It is a
+  cheap, deterministic hallucination check and it is the reason `sourceQuotes` is in the
+  schema at all. Note what it does *not* prove: `CHF 500.00` is a real span of `motor-01`
+  and supports nothing about the claimed amount — it is the deductible. Grounding is
+  necessary for trusting a field, never sufficient.
 - The field belongs to a class the eval says is weak. Per-field accuracy in `results.md` is
-  exactly this: `claimantName` at 96% and `policyNumber` at 100% do not deserve the same
-  treatment, and on multi-party documents — a liability claim with a broker, a lawyer and an
-  injured third party — `claimantName` should be treated as low-confidence by default until
-  the modelling question behind it is settled.
+  exactly this, and on multi-party documents — a liability claim with a broker, a lawyer and
+  an injured third party — `claimantName` should be treated as low-confidence by default
+  until the modelling question behind it is settled. It is the one field that misses on
+  *every* run. Note the discipline the replicate imposes here too: a field that scored 100%
+  on one run and 96% on the next has not earned a different tier, so this rule needs to be
+  set from a per-field figure that is stable across runs, not from the latest one.
 
 *What happens then.* Low-confidence fields are flagged and held: the claim is written to a
 review queue with the extraction pre-filled, the uncertain fields highlighted alongside their
@@ -695,10 +902,20 @@ This is a weekend-sized portfolio piece. The omissions are deliberate:
 
 - **Synthetic data (25 documents).** For the privacy reasons above, and because hand-authoring
   the labels forced every ambiguous case to be decided explicitly — which is where the
-  ambiguity rule came from. 25 is enough to find systematic failure modes and to compare
-  two prompt versions; it is *not* enough for a confident accuracy claim. At 25 documents
-  a single flipped answer moves field accuracy by 0.7pp, so small deltas in the comparison
-  table are noise. A real deployment needs a few hundred labels, drawn from the real mix.
+  ambiguity rule came from. 25 is enough to find systematic failure modes; it is *not*
+  enough for a confident accuracy claim, and [the replicate](#the-replicate-that-settled-it)
+  puts a number on that: three identical runs spanned 2pp of field accuracy. Any comparison
+  narrower than that is noise, which on this set includes the entire v1 → v2 comparison and
+  the entire field-accuracy column of the model table. A real deployment needs a few hundred
+  labels drawn from the real mix — and until it has them, it should lean on the metrics that
+  replicated (urgency, under-triage, cost) rather than the ones that did not.
+- **One run per (prompt version, model).** A run record is keyed by that pair, so a second
+  run of the same configuration overwrites the first. That was the right call for comparing
+  versions and models, and the wrong one for measuring variance — the replicate table above
+  had to be assembled by hand from records read out before they were replaced. Recording
+  replicates means adding a run id and reporting a band instead of a point; it is the first
+  change I would make to this harness, and it is not made here because it is a different
+  piece of work from the one this repo is demonstrating.
 - **No RAG, no embeddings, no vector store.** Nothing in this task requires retrieval. The
   document contains the facts to be extracted, and the categories are a fixed vocabulary
   that fits in the prompt. Adding a vector store would have added infrastructure, latency

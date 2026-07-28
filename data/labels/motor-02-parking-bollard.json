@@ -8,5 +8,6 @@
   "missingFields": ["dateOfLoss"],
   "urgency": "low",
   "category": "motor-collision",
+  "language": "en",
   "notes": "06/07/2025 is genuinely ambiguous between 6 July and 7 June in a Swiss/English mixed context, so the date must be null. Low urgency: no injury, nothing ongoing, amount under CHF 1,000."
 }

@@ -8,5 +8,6 @@
   "missingFields": ["dateOfLoss"],
   "urgency": "normal",
   "category": "health-treatment",
+  "language": "de",
   "notes": "Month-level precision only. The failure mode to watch for is a model emitting 2025-03-01, which is a fabricated day dressed up as an ISO date."
 }

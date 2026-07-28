@@ -1,7 +1,8 @@
 /**
  * Pipeline orchestration: document text in, TriageResult out.
  *
- *   extract (model)  ->  completeness (deterministic)  ->  triage (model)  ->  summary
+ *   extract (model)  ->  completeness + grounding (deterministic)  ->  triage (model)
+ *                                                                  ->  summary
  *
  * The two model calls are sequential by necessity: triage is conditioned on the
  * validated extraction and the completeness flags, so it cannot start until stage 1
@@ -15,6 +16,7 @@ import { getPromptSet, type PromptSet } from '../prompts/index.js';
 import type { ModelCallStage, ModelCallStats, TriageResult } from '../types.js';
 import { checkCompleteness } from './completeness.js';
 import { extractFields } from './extract.js';
+import { checkGrounding } from './grounding.js';
 import { buildSummary } from './summary.js';
 import { triageClaim } from './triage.js';
 
@@ -35,6 +37,10 @@ export async function runPipeline(
 ): Promise<TriageResult> {
   const extracted = await extractFields(documentText, prompts);
   const completeness = checkCompleteness(extracted.data);
+  // Grounding is not fed to triage: it is a confidence signal about stage 1, and letting
+  // it steer stage 2 would put an extraction defect and a classification defect on the
+  // same causal chain - the thing the two-call split exists to prevent.
+  const grounding = checkGrounding(extracted.data, documentText);
   const triaged = await triageClaim(documentText, extracted.data, completeness, prompts);
 
   const calls = [statsFor('extract', extracted), statsFor('triage', triaged)];
@@ -44,6 +50,7 @@ export async function runPipeline(
     documentId,
     extraction: extracted.data,
     completeness,
+    grounding,
     triage: triaged.data,
     summary: buildSummary(extracted.data, completeness, triaged.data),
     meta: {

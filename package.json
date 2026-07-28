@@ -16,7 +16,7 @@
     "web": "next dev --webpack",
     "web:build": "next build --webpack",
     "web:start": "next start",
-    "test": "node --import tsx --test src/eval/normalize.test.ts src/eval/compare.test.ts src/eval/report.test.ts",
+    "test": "node --import tsx --test src/eval/normalize.test.ts src/eval/compare.test.ts src/eval/report.test.ts src/pipeline/grounding.test.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json"
   },

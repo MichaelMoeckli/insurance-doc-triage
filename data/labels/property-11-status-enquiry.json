@@ -8,5 +8,6 @@
   "missingFields": ["amount", "currency"],
   "urgency": "low",
   "category": "property-water",
+  "language": "en",
   "notes": "Low on the administrative limb: a status enquiry and a request for a duplicate form, with no new loss. The category still describes the underlying event, not the request."
 }

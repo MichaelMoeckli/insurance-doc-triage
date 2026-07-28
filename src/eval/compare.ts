@@ -15,9 +15,11 @@
 
 import {
   EXTRACTED_FIELDS,
+  LANGUAGES,
   type Category,
   type ExtractedField,
   type GroundTruth,
+  type Language,
   type ModelCallStats,
   type TokenUsage,
   type TriageResult,
@@ -39,11 +41,32 @@ export interface FieldOutcome {
   normalized: boolean;
 }
 
+/**
+ * How far the model's own evidence held up on one document.
+ *
+ * Counted over cited spans rather than over documents: a document where five of six
+ * fields are cited and grounded is not the same as one where a single field is, and a
+ * per-document boolean would score them identically.
+ */
+export interface GroundingOutcome {
+  /** Spans that occur in the source, over all spans cited for a non-null field. */
+  grounded: number;
+  quotesChecked: number;
+  /** Non-null fields carrying at least one span, over all non-null fields. */
+  cited: number;
+  citable: number;
+  /** Spans cited for a field the model set to null. A contract violation, not a lie. */
+  quotedButNull: number;
+}
+
 export interface DocumentComparison {
   documentId: string;
+  /** From the label. Not predicted, not scored - the axis the results are sliced on. */
+  language: Language;
   /** False when the pipeline threw; every field then counts as wrong. */
   completed: boolean;
   fields: Record<ExtractedField, FieldOutcome>;
+  grounding: GroundingOutcome;
   missingFields: {
     expected: ExtractedField[];
     predicted: ExtractedField[];
@@ -253,6 +276,42 @@ export function compareDocument(truth: GroundTruth, result: TriageResult): Docum
     });
   }
 
+  // --- Grounding --------------------------------------------------------
+  //
+  // Every cited span is checked, including one attached to a field the model set to null:
+  // a span is a claim about the document whatever field it hangs off, and excluding some
+  // of them from the honesty rate would be choosing which lies to count.
+  const grounding = result.grounding;
+  const citableFields = EXTRACTED_FIELDS.filter((field) => result.extraction[field] !== null);
+
+  // One row per fabricated span - each is a distinct thing worth reading in the log.
+  for (const field of grounding.ungrounded) {
+    const spans = grounding.checks.filter((check) => check.field === field && !check.grounded);
+    failures.push({
+      documentId: result.documentId,
+      field,
+      category: 'ungrounded-quote',
+      severity: 'soft',
+      expected: 'a span occurring in the document',
+      actual: spans.map((span) => JSON.stringify(span.quote)).join(' / '),
+      note,
+    });
+  }
+
+  // One row per document - an uncited field is usually a systematic habit rather than a
+  // per-field event, and six rows on one document would drown the log.
+  if (grounding.uncited.length) {
+    failures.push({
+      documentId: result.documentId,
+      field: 'sourceQuotes',
+      category: 'missing-quote',
+      severity: 'soft',
+      expected: `a span for each of ${show(citableFields)}`,
+      actual: `no span for ${show(grounding.uncited)}`,
+      note,
+    });
+  }
+
   const categoryCorrect = truth.category === result.triage.category;
   if (!categoryCorrect) {
     failures.push({
@@ -268,8 +327,16 @@ export function compareDocument(truth: GroundTruth, result: TriageResult): Docum
 
   return {
     documentId: result.documentId,
+    language: truth.language,
     completed: true,
     fields,
+    grounding: {
+      grounded: grounding.checks.filter((check) => check.grounded).length,
+      quotesChecked: grounding.checks.length,
+      cited: citableFields.length - grounding.uncited.length,
+      citable: citableFields.length,
+      quotedButNull: grounding.checks.filter((check) => grounding.quotedButNull.includes(check.field)).length,
+    },
     missingFields: {
       expected: [...expectedMissing],
       predicted: [...predictedMissing],
@@ -312,8 +379,13 @@ export function failedDocument(
 
   return {
     documentId,
+    language: truth.language,
     completed: false,
     fields,
+    // Nothing was cited, so nothing is checkable. Zero over zero, not zero over six -
+    // an errored document must not drag the grounding rate down as if the model had
+    // fabricated something.
+    grounding: { grounded: 0, quotesChecked: 0, cited: 0, citable: 0, quotedButNull: 0 },
     missingFields: { expected: [...truth.missingFields], predicted: [], exact: false },
     urgency: { expected: truth.urgency, predicted: null, correct: false, underTriaged: false },
     category: { expected: truth.category, predicted: null, correct: false },
@@ -344,6 +416,33 @@ export interface Ratio {
   total: number;
 }
 
+/** Grounding, aggregated over a set of documents. */
+export interface GroundingMetrics {
+  /** Cited spans that occur in the source, over all cited spans. */
+  grounded: Ratio;
+  /** Non-null fields carrying at least one span, over all non-null fields. */
+  cited: Ratio;
+  /** Spans cited for a field the model set to null, against the schema's instruction. */
+  quotedButNull: number;
+}
+
+/**
+ * One slice of a run - the same headline numbers restricted to a subset of documents.
+ *
+ * Deliberately a subset of `RunMetrics` rather than the whole of it. A slice of eight
+ * documents cannot support a confusion matrix or a cost projection, and printing one
+ * would invite reading far more into it than eight documents can carry.
+ */
+export interface SliceMetrics {
+  key: string;
+  documents: number;
+  fields: { strict: Ratio; normalized: Ratio };
+  missingFieldsExact: Ratio;
+  urgency: Ratio & { underTriaged: number };
+  category: Ratio;
+  grounding: GroundingMetrics;
+}
+
 export interface RunMetrics {
   documents: number;
   completed: number;
@@ -365,12 +464,80 @@ export interface RunMetrics {
     urgency: Record<string, number>;
     category: Record<string, number>;
   };
+  /**
+   * Optional because run records written before grounding existed do not carry it. The
+   * report renders the section only when it is present rather than showing a zero, which
+   * would misreport an old run as having fabricated every quote.
+   */
+  grounding?: GroundingMetrics;
+  /** Optional for the same reason. One entry per language present in the run. */
+  byLanguage?: SliceMetrics[];
   usage: TokenUsage;
   totalLatencyMs: number;
 }
 
 function ratio(correct: number, total: number): Ratio {
   return { correct, total };
+}
+
+function sum(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function groundingOf(comparisons: readonly DocumentComparison[]): GroundingMetrics {
+  return {
+    grounded: ratio(
+      sum(comparisons.map((c) => c.grounding.grounded)),
+      sum(comparisons.map((c) => c.grounding.quotesChecked)),
+    ),
+    cited: ratio(
+      sum(comparisons.map((c) => c.grounding.cited)),
+      sum(comparisons.map((c) => c.grounding.citable)),
+    ),
+    quotedButNull: sum(comparisons.map((c) => c.grounding.quotedButNull)),
+  };
+}
+
+/**
+ * Splits a run along one dimension and re-derives the headline numbers per bucket.
+ *
+ * Generic in the key function so a second axis - `claimType`, format, urgency band - is a
+ * one-line addition rather than a copy of this. `order` fixes the bucket sequence so the
+ * report reads the same way on every run, and buckets with no documents are dropped: an
+ * empty row invites a reader to treat `n/a` as a result.
+ */
+export function sliceBy<T extends string>(
+  comparisons: readonly DocumentComparison[],
+  order: readonly T[],
+  keyOf: (comparison: DocumentComparison) => T,
+): SliceMetrics[] {
+  const slices: SliceMetrics[] = [];
+
+  for (const key of order) {
+    const bucket = comparisons.filter((c) => keyOf(c) === key);
+    if (bucket.length === 0) continue;
+
+    const cells = bucket.length * EXTRACTED_FIELDS.length;
+    const strictCells = sum(EXTRACTED_FIELDS.map((f) => bucket.filter((c) => c.fields[f].strict).length));
+    const normalizedCells = sum(
+      EXTRACTED_FIELDS.map((f) => bucket.filter((c) => c.fields[f].normalized).length),
+    );
+
+    slices.push({
+      key,
+      documents: bucket.length,
+      fields: { strict: ratio(strictCells, cells), normalized: ratio(normalizedCells, cells) },
+      missingFieldsExact: ratio(bucket.filter((c) => c.missingFields.exact).length, bucket.length),
+      urgency: {
+        ...ratio(bucket.filter((c) => c.urgency.correct).length, bucket.length),
+        underTriaged: bucket.filter((c) => c.urgency.underTriaged).length,
+      },
+      category: ratio(bucket.filter((c) => c.category.correct).length, bucket.length),
+      grounding: groundingOf(bucket),
+    });
+  }
+
+  return slices;
 }
 
 export function aggregate(comparisons: readonly DocumentComparison[]): RunMetrics {
@@ -435,6 +602,8 @@ export function aggregate(comparisons: readonly DocumentComparison[]): RunMetric
     },
     category: ratio(comparisons.filter((c) => c.category.correct).length, comparisons.length),
     confusion: { urgency: urgencyConfusion, category: categoryConfusion },
+    grounding: groundingOf(comparisons),
+    byLanguage: sliceBy(comparisons, LANGUAGES, (c) => c.language),
     usage: comparisons.reduce(
       (sum, c) => ({
         inputTokens: sum.inputTokens + c.usage.inputTokens,

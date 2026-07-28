@@ -8,5 +8,6 @@
   "missingFields": ["amount", "currency"],
   "urgency": "low",
   "category": "liability-third-party",
+  "language": "en",
   "notes": "Administrative document request referencing a closed incident. \"my neighbour's insurer has asked me\" is a soft urgency cue with no actual deadline attached - the rubric requires a stated deadline, so this stays low."
 }

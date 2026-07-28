@@ -8,5 +8,6 @@
   "missingFields": ["dateOfLoss"],
   "urgency": "normal",
   "category": "other",
+  "language": "mixed",
   "notes": "Two hard calls. 03/04/2025 is ambiguous (3 April vs 4 March) so the date is null. And hail has no category of its own, so the correct answer is \"other\" - the tempting wrong answer is property-water, which the document rules out by saying the roof is watertight and there was no ingress."
 }

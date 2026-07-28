@@ -18,6 +18,7 @@ import {
   CLAIM_TYPES,
   CURRENCIES,
   EXTRACTED_FIELDS,
+  LANGUAGES,
   URGENCIES,
   type ExtractedField,
   type GroundTruth,
@@ -81,6 +82,9 @@ function parseGroundTruth(id: string, raw: unknown): GroundTruth {
 
   if (!isMember(obj['urgency'], URGENCIES)) bad(`urgency must be one of ${URGENCIES.join(' | ')}`);
   if (!isMember(obj['category'], CATEGORIES)) bad(`category must be one of ${CATEGORIES.join(' | ')}`);
+  // Required rather than defaulted. A label silently defaulting to `en` would put
+  // documents in the wrong bucket and quietly misreport the per-language table.
+  if (!isMember(obj['language'], LANGUAGES)) bad(`language must be one of ${LANGUAGES.join(' | ')}`);
 
   const missingRaw = obj['missingFields'];
   if (!Array.isArray(missingRaw)) bad('missingFields must be an array');
@@ -105,6 +109,7 @@ function parseGroundTruth(id: string, raw: unknown): GroundTruth {
     missingFields,
     urgency: obj['urgency'] as GroundTruth['urgency'],
     category: obj['category'] as GroundTruth['category'],
+    language: obj['language'] as GroundTruth['language'],
     notes: typeof obj['notes'] === 'string' ? obj['notes'] : '',
   };
 
